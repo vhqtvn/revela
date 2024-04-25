@@ -59,4 +59,4 @@ $ revela --bytecode third_party/move/tools/revela/tests/bytecode/BasicCoin.mv
 
 ## License
 
-Revela is released under the open source [Apache License](LICENSE)
+Revela is released under the open source [Apache License](LICENSE). If you utilize Revela, kindly acknowledge it within your product and provide a link to [revela.verichains.io](https://revela.verichains.io).
