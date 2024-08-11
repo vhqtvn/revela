@@ -1,9 +1,23 @@
 module 0x1337::token_event_store {
+    struct CollectionDescriptionMutate has drop, store {
+        creator_addr: address,
+        collection_name: 0x1::string::String,
+        old_description: 0x1::string::String,
+        new_description: 0x1::string::String,
+    }
+    
     struct CollectionDescriptionMutateEvent has drop, store {
         creator_addr: address,
         collection_name: 0x1::string::String,
         old_description: 0x1::string::String,
         new_description: 0x1::string::String,
+    }
+    
+    struct CollectionMaxiumMutate has drop, store {
+        creator_addr: address,
+        collection_name: 0x1::string::String,
+        old_maximum: u64,
+        new_maximum: u64,
     }
     
     struct CollectionMaxiumMutateEvent has drop, store {
@@ -13,11 +27,27 @@ module 0x1337::token_event_store {
         new_maximum: u64,
     }
     
+    struct CollectionUriMutate has drop, store {
+        creator_addr: address,
+        collection_name: 0x1::string::String,
+        old_uri: 0x1::string::String,
+        new_uri: 0x1::string::String,
+    }
+    
     struct CollectionUriMutateEvent has drop, store {
         creator_addr: address,
         collection_name: 0x1::string::String,
         old_uri: 0x1::string::String,
         new_uri: 0x1::string::String,
+    }
+    
+    struct DefaultPropertyMutate has drop, store {
+        creator: address,
+        collection: 0x1::string::String,
+        token: 0x1::string::String,
+        keys: vector<0x1::string::String>,
+        old_values: vector<0x1::option::Option<0x1337::property_map::PropertyValue>>,
+        new_values: vector<0x1337::property_map::PropertyValue>,
     }
     
     struct DefaultPropertyMutateEvent has drop, store {
@@ -29,12 +59,28 @@ module 0x1337::token_event_store {
         new_values: vector<0x1337::property_map::PropertyValue>,
     }
     
+    struct DescriptionMutate has drop, store {
+        creator: address,
+        collection: 0x1::string::String,
+        token: 0x1::string::String,
+        old_description: 0x1::string::String,
+        new_description: 0x1::string::String,
+    }
+    
     struct DescriptionMutateEvent has drop, store {
         creator: address,
         collection: 0x1::string::String,
         token: 0x1::string::String,
         old_description: 0x1::string::String,
         new_description: 0x1::string::String,
+    }
+    
+    struct MaximumMutate has drop, store {
+        creator: address,
+        collection: 0x1::string::String,
+        token: 0x1::string::String,
+        old_maximum: u64,
+        new_maximum: u64,
     }
     
     struct MaxiumMutateEvent has drop, store {
@@ -45,8 +91,25 @@ module 0x1337::token_event_store {
         new_maximum: u64,
     }
     
+    struct OptInTransfer has drop, store {
+        account_address: address,
+        opt_in: bool,
+    }
+    
     struct OptInTransferEvent has drop, store {
         opt_in: bool,
+    }
+    
+    struct RoyaltyMutate has drop, store {
+        creator: address,
+        collection: 0x1::string::String,
+        token: 0x1::string::String,
+        old_royalty_numerator: u64,
+        old_royalty_denominator: u64,
+        old_royalty_payee_addr: address,
+        new_royalty_numerator: u64,
+        new_royalty_denominator: u64,
+        new_royalty_payee_addr: address,
     }
     
     struct RoyaltyMutateEvent has drop, store {
@@ -74,6 +137,14 @@ module 0x1337::token_event_store {
         extension: 0x1::option::Option<0x1::any::Any>,
     }
     
+    struct UriMutation has drop, store {
+        creator: address,
+        collection: 0x1::string::String,
+        token: 0x1::string::String,
+        old_uri: 0x1::string::String,
+        new_uri: 0x1::string::String,
+    }
+    
     struct UriMutationEvent has drop, store {
         creator: address,
         collection: 0x1::string::String,
@@ -91,8 +162,18 @@ module 0x1337::token_event_store {
             new_description : arg3,
         };
         initialize_token_event_store(arg0);
-        let v2 = &mut borrow_global_mut<TokenEventStoreV1>(0x1::signer::address_of(arg0)).collection_description_mutate_events;
-        0x1::event::emit_event<CollectionDescriptionMutateEvent>(v2, v1);
+        if (0x1::features::module_event_migration_enabled()) {
+            let v2 = 0x1::signer::address_of(arg0);
+            let v3 = CollectionDescriptionMutate{
+                creator_addr    : v2, 
+                collection_name : arg1, 
+                old_description : arg2, 
+                new_description : arg3,
+            };
+            0x1::event::emit<CollectionDescriptionMutate>(v3);
+        };
+        let v4 = &mut borrow_global_mut<TokenEventStoreV1>(0x1::signer::address_of(arg0)).collection_description_mutate_events;
+        0x1::event::emit_event<CollectionDescriptionMutateEvent>(v4, v1);
     }
     
     public(friend) fun emit_collection_maximum_mutate_event(arg0: &signer, arg1: 0x1::string::String, arg2: u64, arg3: u64) acquires TokenEventStoreV1 {
@@ -104,8 +185,18 @@ module 0x1337::token_event_store {
             new_maximum     : arg3,
         };
         initialize_token_event_store(arg0);
-        let v2 = &mut borrow_global_mut<TokenEventStoreV1>(0x1::signer::address_of(arg0)).collection_maximum_mutate_events;
-        0x1::event::emit_event<CollectionMaxiumMutateEvent>(v2, v1);
+        if (0x1::features::module_event_migration_enabled()) {
+            let v2 = 0x1::signer::address_of(arg0);
+            let v3 = CollectionMaxiumMutate{
+                creator_addr    : v2, 
+                collection_name : arg1, 
+                old_maximum     : arg2, 
+                new_maximum     : arg3,
+            };
+            0x1::event::emit<CollectionMaxiumMutate>(v3);
+        };
+        let v4 = &mut borrow_global_mut<TokenEventStoreV1>(0x1::signer::address_of(arg0)).collection_maximum_mutate_events;
+        0x1::event::emit_event<CollectionMaxiumMutateEvent>(v4, v1);
     }
     
     public(friend) fun emit_collection_uri_mutate_event(arg0: &signer, arg1: 0x1::string::String, arg2: 0x1::string::String, arg3: 0x1::string::String) acquires TokenEventStoreV1 {
@@ -118,6 +209,16 @@ module 0x1337::token_event_store {
         };
         initialize_token_event_store(arg0);
         let v2 = borrow_global_mut<TokenEventStoreV1>(0x1::signer::address_of(arg0));
+        if (0x1::features::module_event_migration_enabled()) {
+            let v3 = 0x1::signer::address_of(arg0);
+            let v4 = CollectionUriMutate{
+                creator_addr    : v3, 
+                collection_name : arg1, 
+                old_uri         : arg2, 
+                new_uri         : arg3,
+            };
+            0x1::event::emit<CollectionUriMutate>(v4);
+        };
         0x1::event::emit_event<CollectionUriMutateEvent>(&mut v2.collection_uri_mutate_events, v1);
     }
     
@@ -132,8 +233,19 @@ module 0x1337::token_event_store {
             new_values : arg5,
         };
         initialize_token_event_store(arg0);
-        let v2 = &mut borrow_global_mut<TokenEventStoreV1>(v0).default_property_mutate_events;
-        0x1::event::emit_event<DefaultPropertyMutateEvent>(v2, v1);
+        if (0x1::features::module_event_migration_enabled()) {
+            let v2 = DefaultPropertyMutate{
+                creator    : v0, 
+                collection : arg1, 
+                token      : arg2, 
+                keys       : arg3, 
+                old_values : arg4, 
+                new_values : arg5,
+            };
+            0x1::event::emit<DefaultPropertyMutate>(v2);
+        };
+        let v3 = &mut borrow_global_mut<TokenEventStoreV1>(v0).default_property_mutate_events;
+        0x1::event::emit_event<DefaultPropertyMutateEvent>(v3, v1);
     }
     
     public(friend) fun emit_token_descrition_mutate_event(arg0: &signer, arg1: 0x1::string::String, arg2: 0x1::string::String, arg3: 0x1::string::String, arg4: 0x1::string::String) acquires TokenEventStoreV1 {
@@ -146,8 +258,18 @@ module 0x1337::token_event_store {
             new_description : arg4,
         };
         initialize_token_event_store(arg0);
-        let v2 = &mut borrow_global_mut<TokenEventStoreV1>(v0).description_mutate_events;
-        0x1::event::emit_event<DescriptionMutateEvent>(v2, v1);
+        if (0x1::features::module_event_migration_enabled()) {
+            let v2 = DescriptionMutate{
+                creator         : v0, 
+                collection      : arg1, 
+                token           : arg2, 
+                old_description : arg3, 
+                new_description : arg4,
+            };
+            0x1::event::emit<DescriptionMutate>(v2);
+        };
+        let v3 = &mut borrow_global_mut<TokenEventStoreV1>(v0).description_mutate_events;
+        0x1::event::emit_event<DescriptionMutateEvent>(v3, v1);
     }
     
     public(friend) fun emit_token_maximum_mutate_event(arg0: &signer, arg1: 0x1::string::String, arg2: 0x1::string::String, arg3: u64, arg4: u64) acquires TokenEventStoreV1 {
@@ -160,15 +282,32 @@ module 0x1337::token_event_store {
             new_maximum : arg4,
         };
         initialize_token_event_store(arg0);
-        let v2 = &mut borrow_global_mut<TokenEventStoreV1>(v0).maximum_mutate_events;
-        0x1::event::emit_event<MaxiumMutateEvent>(v2, v1);
+        if (0x1::features::module_event_migration_enabled()) {
+            let v2 = MaximumMutate{
+                creator     : v0, 
+                collection  : arg1, 
+                token       : arg2, 
+                old_maximum : arg3, 
+                new_maximum : arg4,
+            };
+            0x1::event::emit<MaximumMutate>(v2);
+        };
+        let v3 = &mut borrow_global_mut<TokenEventStoreV1>(v0).maximum_mutate_events;
+        0x1::event::emit_event<MaxiumMutateEvent>(v3, v1);
     }
     
     public(friend) fun emit_token_opt_in_event(arg0: &signer, arg1: bool) acquires TokenEventStoreV1 {
         let v0 = OptInTransferEvent{opt_in: arg1};
         initialize_token_event_store(arg0);
-        let v1 = &mut borrow_global_mut<TokenEventStoreV1>(0x1::signer::address_of(arg0)).opt_in_events;
-        0x1::event::emit_event<OptInTransferEvent>(v1, v0);
+        if (0x1::features::module_event_migration_enabled()) {
+            let v1 = OptInTransfer{
+                account_address : 0x1::signer::address_of(arg0), 
+                opt_in          : arg1,
+            };
+            0x1::event::emit<OptInTransfer>(v1);
+        };
+        let v2 = &mut borrow_global_mut<TokenEventStoreV1>(0x1::signer::address_of(arg0)).opt_in_events;
+        0x1::event::emit_event<OptInTransferEvent>(v2, v0);
     }
     
     public(friend) fun emit_token_royalty_mutate_event(arg0: &signer, arg1: 0x1::string::String, arg2: 0x1::string::String, arg3: u64, arg4: u64, arg5: address, arg6: u64, arg7: u64, arg8: address) acquires TokenEventStoreV1 {
@@ -185,6 +324,20 @@ module 0x1337::token_event_store {
             new_royalty_payee_addr  : arg8,
         };
         initialize_token_event_store(arg0);
+        if (0x1::features::module_event_migration_enabled()) {
+            let v2 = RoyaltyMutate{
+                creator                 : v0, 
+                collection              : arg1, 
+                token                   : arg2, 
+                old_royalty_numerator   : arg3, 
+                old_royalty_denominator : arg4, 
+                old_royalty_payee_addr  : arg5, 
+                new_royalty_numerator   : arg6, 
+                new_royalty_denominator : arg7, 
+                new_royalty_payee_addr  : arg8,
+            };
+            0x1::event::emit<RoyaltyMutate>(v2);
+        };
         0x1::event::emit_event<RoyaltyMutateEvent>(&mut borrow_global_mut<TokenEventStoreV1>(v0).royalty_mutate_events, v1);
     }
     
@@ -198,8 +351,18 @@ module 0x1337::token_event_store {
             new_uri    : arg4,
         };
         initialize_token_event_store(arg0);
-        let v2 = &mut borrow_global_mut<TokenEventStoreV1>(v0).uri_mutate_events;
-        0x1::event::emit_event<UriMutationEvent>(v2, v1);
+        if (0x1::features::module_event_migration_enabled()) {
+            let v2 = UriMutation{
+                creator    : v0, 
+                collection : arg1, 
+                token      : arg2, 
+                old_uri    : arg3, 
+                new_uri    : arg4,
+            };
+            0x1::event::emit<UriMutation>(v2);
+        };
+        let v3 = &mut borrow_global_mut<TokenEventStoreV1>(v0).uri_mutate_events;
+        0x1::event::emit_event<UriMutationEvent>(v3, v1);
     }
     
     fun initialize_token_event_store(arg0: &signer) {

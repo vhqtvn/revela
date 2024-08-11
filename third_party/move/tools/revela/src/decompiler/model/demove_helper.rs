@@ -51,6 +51,8 @@ pub fn dummy_struct_data(name: Symbol) -> StructData {
         spec_var_opt: Default::default(),
         field_data: Default::default(),
         spec: Default::default(),
+        variants: Default::default(),
+        is_native: Default::default(),
     }
 }
 
@@ -74,11 +76,13 @@ pub fn dummy_function_data(name: Symbol) -> FunctionData {
         called_funs: Default::default(),
         calling_funs: Default::default(),
         transitive_closure_of_called_funs: Default::default(),
+        id_loc: Default::default(),
+        has_package_visibility: Default::default(),
     }
 }
 
 pub fn run_stackless_compiler(env: &mut GlobalEnv, program: Program) {
-    env.add_source(FileHash::empty(), Rc::new(BTreeMap::new()), "", "", false);
+    env.add_source(FileHash::empty(), Rc::new(BTreeMap::new()), "", "", false, false);
     (env.file_hash_map).insert(
         FileHash::empty(),
         (

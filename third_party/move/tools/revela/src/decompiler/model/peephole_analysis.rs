@@ -67,7 +67,7 @@ impl PeepHoleProcessor {
             | Operation::GetField(_, _, _, _)
             | Operation::Drop
             | Operation::ReadRef
-            | Operation::FreezeRef
+            | Operation::FreezeRef(_)
             | Operation::Vector
             | Operation::CastU8
             | Operation::CastU16
@@ -115,6 +115,11 @@ impl PeepHoleProcessor {
             | Operation::IsParent(_, _)
             | Operation::WriteBack(_, _)
             | Operation::Havoc(..) => false,
+
+            Operation::TestVariant(_, _, _, _) => todo!(),
+            Operation::PackVariant(_, _, _, _) => todo!(),
+            Operation::UnpackVariant(_, _, _, _) => todo!(),
+            Operation::BorrowVariantField(_, _, _, _, _) => todo!(),
         }
     }
 

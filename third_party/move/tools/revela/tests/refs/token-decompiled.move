@@ -1,4 +1,9 @@
 module 0x1337::token {
+    struct BurnToken has drop, store {
+        id: TokenId,
+        amount: u64,
+    }
+    
     struct BurnTokenEvent has drop, store {
         id: TokenId,
         amount: u64,
@@ -27,12 +32,35 @@ module 0x1337::token {
         mint_token_events: 0x1::event::EventHandle<MintTokenEvent>,
     }
     
+    struct CreateCollection has drop, store {
+        creator: address,
+        collection_name: 0x1::string::String,
+        uri: 0x1::string::String,
+        description: 0x1::string::String,
+        maximum: u64,
+    }
+    
     struct CreateCollectionEvent has drop, store {
         creator: address,
         collection_name: 0x1::string::String,
         uri: 0x1::string::String,
         description: 0x1::string::String,
         maximum: u64,
+    }
+    
+    struct CreateTokenData has drop, store {
+        id: TokenDataId,
+        description: 0x1::string::String,
+        maximum: u64,
+        uri: 0x1::string::String,
+        royalty_payee_address: address,
+        royalty_points_denominator: u64,
+        royalty_points_numerator: u64,
+        name: 0x1::string::String,
+        mutability_config: TokenMutabilityConfig,
+        property_keys: vector<0x1::string::String>,
+        property_values: vector<vector<u8>>,
+        property_types: vector<0x1::string::String>,
     }
     
     struct CreateTokenDataEvent has drop, store {
@@ -50,14 +78,32 @@ module 0x1337::token {
         property_types: vector<0x1::string::String>,
     }
     
+    struct Deposit has drop, store {
+        id: TokenId,
+        amount: u64,
+    }
+    
     struct DepositEvent has drop, store {
         id: TokenId,
+        amount: u64,
+    }
+    
+    struct MintToken has drop, store {
+        id: TokenDataId,
         amount: u64,
     }
     
     struct MintTokenEvent has drop, store {
         id: TokenDataId,
         amount: u64,
+    }
+    
+    struct MutateTokenPropertyMap has drop, store {
+        old_id: TokenId,
+        new_id: TokenId,
+        keys: vector<0x1::string::String>,
+        values: vector<vector<u8>>,
+        types: vector<0x1::string::String>,
     }
     
     struct MutateTokenPropertyMapEvent has drop, store {
@@ -118,6 +164,11 @@ module 0x1337::token {
         withdraw_events: 0x1::event::EventHandle<WithdrawEvent>,
         burn_events: 0x1::event::EventHandle<BurnTokenEvent>,
         mutate_token_property_events: 0x1::event::EventHandle<MutateTokenPropertyMapEvent>,
+    }
+    
+    struct Withdraw has drop, store {
+        id: TokenId,
+        amount: u64,
     }
     
     struct WithdrawCapability has drop, store {
@@ -193,24 +244,31 @@ module 0x1337::token {
             amount           : v11,
             token_properties : _,
         } = v9;
-        let v13 = &mut borrow_global_mut<TokenStore>(0x1::signer::address_of(arg0)).burn_events;
-        let v14 = BurnTokenEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v13 = BurnToken{
+                id     : v0, 
+                amount : v11,
+            };
+            0x1::event::emit<BurnToken>(v13);
+        };
+        let v14 = &mut borrow_global_mut<TokenStore>(0x1::signer::address_of(arg0)).burn_events;
+        let v15 = BurnTokenEvent{
             id     : v0, 
             amount : v11,
         };
-        0x1::event::emit_event<BurnTokenEvent>(v13, v14);
-        let v15 = 0x1::table::borrow_mut<TokenDataId, TokenData>(&mut v2.token_data, v0.token_data_id);
-        if (v15.maximum > 0) {
-            v15.supply = v15.supply - v11;
-            if (v15.supply == 0) {
+        0x1::event::emit_event<BurnTokenEvent>(v14, v15);
+        let v16 = 0x1::table::borrow_mut<TokenDataId, TokenData>(&mut v2.token_data, v0.token_data_id);
+        if (v16.maximum > 0) {
+            v16.supply = v16.supply - v11;
+            if (v16.supply == 0) {
                 destroy_token_data(0x1::table::remove<TokenDataId, TokenData>(&mut v2.token_data, v0.token_data_id));
-                let v16 = v0.token_data_id.collection;
-                let v17 = 0x1::table::borrow_mut<0x1::string::String, CollectionData>(&mut v2.collection_data, v16);
-                if (v17.maximum > 0) {
-                    v17.supply = v17.supply - 1;
-                    if (v17.supply == 0) {
-                        let v18 = 0x1::table::remove<0x1::string::String, CollectionData>(&mut v2.collection_data, v17.name);
-                        destroy_collection_data(v18);
+                let v17 = v0.token_data_id.collection;
+                let v18 = 0x1::table::borrow_mut<0x1::string::String, CollectionData>(&mut v2.collection_data, v17);
+                if (v18.maximum > 0) {
+                    v18.supply = v18.supply - 1;
+                    if (v18.supply == 0) {
+                        let v19 = 0x1::table::remove<0x1::string::String, CollectionData>(&mut v2.collection_data, v18.name);
+                        destroy_collection_data(v19);
                     };
                 };
             };
@@ -238,22 +296,29 @@ module 0x1337::token {
             amount           : v11,
             token_properties : _,
         } = v9;
-        let v13 = BurnTokenEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v13 = BurnToken{
+                id     : v1, 
+                amount : v11,
+            };
+            0x1::event::emit<BurnToken>(v13);
+        };
+        let v14 = BurnTokenEvent{
             id     : v1, 
             amount : v11,
         };
-        0x1::event::emit_event<BurnTokenEvent>(&mut borrow_global_mut<TokenStore>(arg1).burn_events, v13);
+        0x1::event::emit_event<BurnTokenEvent>(&mut borrow_global_mut<TokenStore>(arg1).burn_events, v14);
         if (v4.maximum > 0) {
             v4.supply = v4.supply - v11;
             if (v4.supply == 0) {
                 destroy_token_data(0x1::table::remove<TokenDataId, TokenData>(&mut v2.token_data, v1.token_data_id));
-                let v14 = v1.token_data_id.collection;
-                let v15 = 0x1::table::borrow_mut<0x1::string::String, CollectionData>(&mut v2.collection_data, v14);
-                if (v15.maximum > 0) {
-                    v15.supply = v15.supply - 1;
-                    if (v15.supply == 0) {
-                        let v16 = 0x1::table::remove<0x1::string::String, CollectionData>(&mut v2.collection_data, v15.name);
-                        destroy_collection_data(v16);
+                let v15 = v1.token_data_id.collection;
+                let v16 = 0x1::table::borrow_mut<0x1::string::String, CollectionData>(&mut v2.collection_data, v15);
+                if (v16.maximum > 0) {
+                    v16.supply = v16.supply - 1;
+                    if (v16.supply == 0) {
+                        let v17 = 0x1::table::remove<0x1::string::String, CollectionData>(&mut v2.collection_data, v16.name);
+                        destroy_collection_data(v17);
                     };
                 };
             };
@@ -303,14 +368,24 @@ module 0x1337::token {
             mutability_config : v8,
         };
         0x1::table::add<0x1::string::String, CollectionData>(v7, arg1, v9);
-        let v10 = CreateCollectionEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v10 = CreateCollection{
+                creator         : v0, 
+                collection_name : arg1, 
+                uri             : arg3, 
+                description     : arg2, 
+                maximum         : arg4,
+            };
+            0x1::event::emit<CreateCollection>(v10);
+        };
+        let v11 = CreateCollectionEvent{
             creator         : v0, 
             collection_name : arg1, 
             uri             : arg3, 
             description     : arg2, 
             maximum         : arg4,
         };
-        0x1::event::emit_event<CreateCollectionEvent>(&mut borrow_global_mut<Collections>(v0).create_collection_events, v10);
+        0x1::event::emit_event<CreateCollectionEvent>(&mut borrow_global_mut<Collections>(v0).create_collection_events, v11);
     }
     
     public fun create_collection_mutability_config(arg0: &vector<bool>) : CollectionMutabilityConfig {
@@ -410,23 +485,40 @@ module 0x1337::token {
             mutability_config        : arg9,
         };
         0x1::table::add<TokenDataId, TokenData>(&mut v1.token_data, v2, v4);
-        let v5 = arg5;
-        let v6 = arg2;
-        let v7 = CreateTokenDataEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v5 = CreateTokenData{
+                id                         : v2, 
+                description                : arg3, 
+                maximum                    : arg4, 
+                uri                        : arg5, 
+                royalty_payee_address      : arg6, 
+                royalty_points_denominator : arg7, 
+                royalty_points_numerator   : arg8, 
+                name                       : arg2, 
+                mutability_config          : arg9, 
+                property_keys              : arg10, 
+                property_values            : arg11, 
+                property_types             : arg12,
+            };
+            0x1::event::emit<CreateTokenData>(v5);
+        };
+        let v6 = arg5;
+        let v7 = arg2;
+        let v8 = CreateTokenDataEvent{
             id                         : v2, 
             description                : arg3, 
             maximum                    : arg4, 
-            uri                        : v5, 
+            uri                        : v6, 
             royalty_payee_address      : arg6, 
             royalty_points_denominator : arg7, 
             royalty_points_numerator   : arg8, 
-            name                       : v6, 
+            name                       : v7, 
             mutability_config          : arg9, 
             property_keys              : arg10, 
             property_values            : arg11, 
             property_types             : arg12,
         };
-        0x1::event::emit_event<CreateTokenDataEvent>(&mut v1.create_token_data_events, v7);
+        0x1::event::emit_event<CreateTokenDataEvent>(&mut v1.create_token_data_events, v8);
         v2
     }
     
@@ -473,11 +565,18 @@ module 0x1337::token {
     fun direct_deposit(arg0: address, arg1: Token) acquires TokenStore {
         assert!(arg1.amount > 0, 0x1::error::invalid_argument(33));
         let v0 = borrow_global_mut<TokenStore>(arg0);
-        let v1 = DepositEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v1 = Deposit{
+                id     : arg1.id, 
+                amount : arg1.amount,
+            };
+            0x1::event::emit<Deposit>(v1);
+        };
+        let v2 = DepositEvent{
             id     : arg1.id, 
             amount : arg1.amount,
         };
-        0x1::event::emit_event<DepositEvent>(&mut v0.deposit_events, v1);
+        0x1::event::emit_event<DepositEvent>(&mut v0.deposit_events, v2);
         assert!(exists<TokenStore>(arg0), 0x1::error::not_found(11));
         if (!0x1::table::contains<TokenId, Token>(&v0.tokens, arg1.id)) {
             0x1::table::add<TokenId, Token>(&mut v0.tokens, arg1.id, arg1);
@@ -742,18 +841,25 @@ module 0x1337::token {
             v2.supply = v2.supply + arg2;
         };
         let v3 = create_token_id(arg1, 0);
-        let v4 = &mut borrow_global_mut<Collections>(v0).mint_token_events;
-        let v5 = MintTokenEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v4 = MintToken{
+                id     : arg1, 
+                amount : arg2,
+            };
+            0x1::event::emit<MintToken>(v4);
+        };
+        let v5 = &mut borrow_global_mut<Collections>(v0).mint_token_events;
+        let v6 = MintTokenEvent{
             id     : arg1, 
             amount : arg2,
         };
-        0x1::event::emit_event<MintTokenEvent>(v4, v5);
-        let v6 = Token{
+        0x1::event::emit_event<MintTokenEvent>(v5, v6);
+        let v7 = Token{
             id               : v3, 
             amount           : arg2, 
             token_properties : 0x1337::property_map::empty(),
         };
-        deposit_token(arg0, v6);
+        deposit_token(arg0, v7);
         v3
     }
     
@@ -769,18 +875,25 @@ module 0x1337::token {
             assert!(v2.supply + arg3 <= v2.maximum, 0x1::error::invalid_argument(7));
             v2.supply = v2.supply + arg3;
         };
-        let v3 = &mut borrow_global_mut<Collections>(v0).mint_token_events;
-        let v4 = MintTokenEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v3 = MintToken{
+                id     : arg2, 
+                amount : arg3,
+            };
+            0x1::event::emit<MintToken>(v3);
+        };
+        let v4 = &mut borrow_global_mut<Collections>(v0).mint_token_events;
+        let v5 = MintTokenEvent{
             id     : arg2, 
             amount : arg3,
         };
-        0x1::event::emit_event<MintTokenEvent>(v3, v4);
-        let v5 = Token{
+        0x1::event::emit_event<MintTokenEvent>(v4, v5);
+        let v6 = Token{
             id               : create_token_id(arg2, 0), 
             amount           : arg3, 
             token_properties : 0x1337::property_map::empty(),
         };
-        direct_deposit(arg1, v5);
+        direct_deposit(arg1, v6);
     }
     
     public fun mutate_collection_description(arg0: &signer, arg1: 0x1::string::String, arg2: 0x1::string::String) acquires Collections {
@@ -841,14 +954,24 @@ module 0x1337::token {
             };
             direct_deposit(arg1, v9);
             update_token_property_internal(arg1, v8, arg3, arg4, arg5);
-            let v10 = MutateTokenPropertyMapEvent{
+            if (0x1::features::module_event_migration_enabled()) {
+                let v10 = MutateTokenPropertyMap{
+                    old_id : arg2, 
+                    new_id : v8, 
+                    keys   : arg3, 
+                    values : arg4, 
+                    types  : arg5,
+                };
+                0x1::event::emit<MutateTokenPropertyMap>(v10);
+            };
+            let v11 = MutateTokenPropertyMapEvent{
                 old_id : arg2, 
                 new_id : v8, 
                 keys   : arg3, 
                 values : arg4, 
                 types  : arg5,
             };
-            0x1::event::emit_event<MutateTokenPropertyMapEvent>(&mut borrow_global_mut<TokenStore>(arg1).mutate_token_property_events, v10);
+            0x1::event::emit_event<MutateTokenPropertyMapEvent>(&mut borrow_global_mut<TokenStore>(arg1).mutate_token_property_events, v11);
             v2.largest_property_version = v7;
             let Token {
                 id               : _,
@@ -858,14 +981,24 @@ module 0x1337::token {
             v8
         } else {
             update_token_property_internal(arg1, arg2, arg3, arg4, arg5);
-            let v14 = MutateTokenPropertyMapEvent{
+            if (0x1::features::module_event_migration_enabled()) {
+                let v15 = MutateTokenPropertyMap{
+                    old_id : arg2, 
+                    new_id : arg2, 
+                    keys   : arg3, 
+                    values : arg4, 
+                    types  : arg5,
+                };
+                0x1::event::emit<MutateTokenPropertyMap>(v15);
+            };
+            let v16 = MutateTokenPropertyMapEvent{
                 old_id : arg2, 
                 new_id : arg2, 
                 keys   : arg3, 
                 values : arg4, 
                 types  : arg5,
             };
-            0x1::event::emit_event<MutateTokenPropertyMapEvent>(&mut borrow_global_mut<TokenStore>(arg1).mutate_token_property_events, v14);
+            0x1::event::emit_event<MutateTokenPropertyMapEvent>(&mut borrow_global_mut<TokenStore>(arg1).mutate_token_property_events, v16);
             arg2
         }
     }
@@ -1040,19 +1173,26 @@ module 0x1337::token {
         let v0 = balance_of(arg0, arg1);
         assert!(v0 >= arg2, 0x1::error::invalid_argument(5));
         assert!(exists<TokenStore>(arg0), 0x1::error::not_found(11));
-        let v1 = WithdrawEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v1 = Withdraw{
+                id     : arg1, 
+                amount : arg2,
+            };
+            0x1::event::emit<Withdraw>(v1);
+        };
+        let v2 = WithdrawEvent{
             id     : arg1, 
             amount : arg2,
         };
-        0x1::event::emit_event<WithdrawEvent>(&mut borrow_global_mut<TokenStore>(arg0).withdraw_events, v1);
-        let v2 = &mut borrow_global_mut<TokenStore>(arg0).tokens;
-        assert!(0x1::table::contains<TokenId, Token>(v2, arg1), 0x1::error::not_found(15));
-        let v3 = &mut 0x1::table::borrow_mut<TokenId, Token>(v2, arg1).amount;
-        if (*v3 > arg2) {
-            *v3 = *v3 - arg2;
+        0x1::event::emit_event<WithdrawEvent>(&mut borrow_global_mut<TokenStore>(arg0).withdraw_events, v2);
+        let v3 = &mut borrow_global_mut<TokenStore>(arg0).tokens;
+        assert!(0x1::table::contains<TokenId, Token>(v3, arg1), 0x1::error::not_found(15));
+        let v4 = &mut 0x1::table::borrow_mut<TokenId, Token>(v3, arg1).amount;
+        if (*v4 > arg2) {
+            *v4 = *v4 - arg2;
             Token{id: arg1, amount: arg2, token_properties: 0x1337::property_map::empty()}
         } else {
-            0x1::table::remove<TokenId, Token>(v2, arg1)
+            0x1::table::remove<TokenId, Token>(v3, arg1)
         }
     }
     

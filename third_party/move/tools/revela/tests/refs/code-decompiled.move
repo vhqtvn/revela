@@ -4,7 +4,7 @@ module 0x1::code {
         module_name: 0x1::string::String,
     }
     
-    struct ModuleMetadata has drop, store {
+    struct ModuleMetadata has copy, drop, store {
         name: 0x1::string::String,
         source: vector<u8>,
         source_map: vector<u8>,
@@ -16,7 +16,7 @@ module 0x1::code {
         package_name: 0x1::string::String,
     }
     
-    struct PackageMetadata has drop, store {
+    struct PackageMetadata has copy, drop, store {
         name: 0x1::string::String,
         upgrade_policy: UpgradePolicy,
         upgrade_number: u64,
@@ -29,6 +29,11 @@ module 0x1::code {
     
     struct PackageRegistry has drop, store, key {
         packages: vector<PackageMetadata>,
+    }
+    
+    struct PublishPackage has drop, store {
+        code_address: address,
+        is_upgrade: bool,
     }
     
     struct UpgradePolicy has copy, drop, store {
@@ -120,6 +125,30 @@ module 0x1::code {
         };
     }
     
+    public fun freeze_code_object(arg0: &signer, arg1: 0x1::object::Object<PackageRegistry>) acquires PackageRegistry {
+        let v0 = 0x1::object::object_address<PackageRegistry>(&arg1);
+        assert!(exists<PackageRegistry>(v0), 0x1::error::not_found(10));
+        let v1 = 0x1::object::is_owner<PackageRegistry>(arg1, 0x1::signer::address_of(arg0));
+        assert!(v1, 0x1::error::permission_denied(9));
+        let v2 = borrow_global_mut<PackageRegistry>(v0);
+        let v3 = &mut v2.packages;
+        let v4 = 0;
+        while (v4 < 0x1::vector::length<PackageMetadata>(v3)) {
+            0x1::vector::borrow_mut<PackageMetadata>(v3, v4).upgrade_policy = upgrade_policy_immutable();
+            v4 = v4 + 1;
+        };
+        let v5 = v2.packages;
+        0x1::vector::reverse<PackageMetadata>(&mut v5);
+        let v6 = v5;
+        let v7 = 0x1::vector::length<PackageMetadata>(&v6);
+        while (v7 > 0) {
+            let v8 = 0x1::vector::pop_back<PackageMetadata>(&mut v6);
+            check_dependencies(v0, &v8);
+            v7 = v7 - 1;
+        };
+        0x1::vector::destroy_empty<PackageMetadata>(v6);
+    }
+    
     fun get_module_names(arg0: &PackageMetadata) : vector<0x1::string::String> {
         let v0 = 0x1::vector::empty<0x1::string::String>();
         let v1 = &arg0.modules;
@@ -183,6 +212,11 @@ module 0x1::code {
         } else {
             0x1::vector::push_back<PackageMetadata>(&mut borrow_global_mut<PackageRegistry>(v1).packages, arg1);
         };
+        let v13 = PublishPackage{
+            code_address : v1, 
+            is_upgrade   : v8 > 0,
+        };
+        0x1::event::emit<PublishPackage>(v13);
         if (0x1::features::code_dependency_check_enabled()) {
             request_publish_with_allowed_deps(v1, v4, v3, arg2, v11.policy);
         } else {

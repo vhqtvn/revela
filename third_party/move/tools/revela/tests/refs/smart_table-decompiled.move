@@ -215,6 +215,70 @@ module 0x1::smart_table {
         destroy_empty<T0, T1>(arg0);
     }
     
+    public fun keys<T0: copy + drop + store, T1: copy + store>(arg0: &SmartTable<T0, T1>) : vector<T0> {
+        let (v0, _, _) = keys_paginated<T0, T1>(arg0, 0, 0, length<T0, T1>(arg0));
+        v0
+    }
+    
+    public fun keys_paginated<T0: copy + drop + store, T1: copy + store>(arg0: &SmartTable<T0, T1>, arg1: u64, arg2: u64, arg3: u64) : (vector<T0>, 0x1::option::Option<u64>, 0x1::option::Option<u64>) {
+        let v0 = arg0.num_buckets;
+        let v1 = &arg0.buckets;
+        assert!(arg1 < v0, 8);
+        let v2 = 0x1::table_with_length::borrow<u64, vector<Entry<T0, T1>>>(v1, arg1);
+        assert!(arg2 < 0x1::vector::length<Entry<T0, T1>>(v2) || arg2 == 0, 9);
+        let v3 = 0x1::vector::empty<T0>();
+        if (arg3 == 0) {
+            return (v3, 0x1::option::some<u64>(arg1), 0x1::option::some<u64>(arg2))
+        };
+        let v4 = arg1;
+        let v5 = false;
+        loop {
+            if (v5) {
+                v4 = v4 + 1;
+            } else {
+                v5 = true;
+            };
+            if (v4 < v0) {
+                let v6 = 0x1::table_with_length::borrow<u64, vector<Entry<T0, T1>>>(v1, v4);
+                let v7 = 0x1::vector::length<Entry<T0, T1>>(v6);
+                let v8 = arg2;
+                let v9 = false;
+                loop {
+                    if (v9) {
+                        v8 = v8 + 1;
+                    } else {
+                        v9 = true;
+                    };
+                    if (v8 < v7) {
+                        0x1::vector::push_back<T0>(&mut v3, 0x1::vector::borrow<Entry<T0, T1>>(v6, v8).key);
+                        let v10 = arg3 - 1;
+                        arg3 = v10;
+                        if (v10 == 0) {
+                            let v11 = v8 + 1;
+                            return if (v11 == v7) {
+                                let v15 = v4 + 1;
+                                let (v16, v17, v18) = if (v15 < v0) {
+                                    (v3, 0x1::option::some<u64>(v15), 0x1::option::some<u64>(0))
+                                } else {
+                                    (v3, 0x1::option::none<u64>(), 0x1::option::none<u64>())
+                                };
+                                (v16, v17, v18)
+                            } else {
+                                (v3, 0x1::option::some<u64>(v4), 0x1::option::some<u64>(v11))
+                            }
+                        };
+                    } else {
+                        break
+                    };
+                };
+                arg2 = 0;
+            } else {
+                break
+            };
+        };
+        (v3, 0x1::option::none<u64>(), 0x1::option::none<u64>())
+    }
+    
     public fun load_factor<T0, T1>(arg0: &SmartTable<T0, T1>) : u64 {
         arg0.size * 100 / arg0.num_buckets / arg0.target_bucket_size
     }

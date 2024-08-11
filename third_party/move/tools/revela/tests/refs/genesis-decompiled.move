@@ -67,7 +67,6 @@ module 0x1::genesis {
         0x1::block::initialize(&v2, arg5);
         0x1::state_storage::initialize(&v2);
         0x1::timestamp::set_time_has_started(&v2);
-        0x1::jwks::initialize(&v2);
     }
     
     fun set_genesis_end(arg0: &signer) {
@@ -188,6 +187,8 @@ module 0x1::genesis {
     
     fun initialize_aptos_coin(arg0: &signer) {
         let (v0, v1) = 0x1::aptos_coin::initialize(arg0);
+        0x1::coin::create_coin_conversion_map(arg0);
+        0x1::coin::create_pairing<0x1::aptos_coin::AptosCoin>(arg0);
         0x1::stake::store_aptos_coin_mint_cap(arg0, v1);
         0x1::transaction_fee::store_aptos_coin_burn_cap(arg0, v0);
         0x1::transaction_fee::store_aptos_coin_mint_cap(arg0, v1);
@@ -195,11 +196,14 @@ module 0x1::genesis {
     
     fun initialize_core_resources_and_aptos_coin(arg0: &signer, arg1: vector<u8>) {
         let (v0, v1) = 0x1::aptos_coin::initialize(arg0);
+        0x1::coin::create_coin_conversion_map(arg0);
+        0x1::coin::create_pairing<0x1::aptos_coin::AptosCoin>(arg0);
         0x1::stake::store_aptos_coin_mint_cap(arg0, v1);
         0x1::transaction_fee::store_aptos_coin_burn_cap(arg0, v0);
         0x1::transaction_fee::store_aptos_coin_mint_cap(arg0, v1);
         let v2 = 0x1::account::create_account(@0x3000);
         0x1::account::rotate_authentication_key_internal(&v2, arg1);
+        0x1::aptos_account::register_apt(&v2);
         0x1::aptos_coin::configure_accounts_for_test(arg0, &v2, v1);
     }
     

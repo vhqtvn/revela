@@ -9,6 +9,10 @@ module 0x1::reconfiguration {
         dummy_field: bool,
     }
     
+    struct NewEpoch has drop, store {
+        epoch: u64,
+    }
+    
     struct NewEpochEvent has drop, store {
         epoch: u64,
     }
@@ -28,8 +32,12 @@ module 0x1::reconfiguration {
         let v0 = borrow_global_mut<Configuration>(@0x1);
         assert!(v0.epoch == 0 && v0.last_reconfiguration_time == 0, 0x1::error::invalid_state(1));
         v0.epoch = 1;
-        let v1 = NewEpochEvent{epoch: v0.epoch};
-        0x1::event::emit_event<NewEpochEvent>(&mut v0.events, v1);
+        if (0x1::features::module_event_migration_enabled()) {
+            let v1 = NewEpoch{epoch: v0.epoch};
+            0x1::event::emit<NewEpoch>(v1);
+        };
+        let v2 = NewEpochEvent{epoch: v0.epoch};
+        0x1::event::emit_event<NewEpochEvent>(&mut v0.events, v2);
     }
     
     fun enable_reconfiguration(arg0: &signer) acquires DisableReconfiguration {
@@ -68,6 +76,7 @@ module 0x1::reconfiguration {
         if (v1 == v0.last_reconfiguration_time) {
             return
         };
+        0x1::reconfiguration_state::on_reconfig_start();
         if (0x1::features::collect_and_distribute_gas_fees()) {
             0x1::transaction_fee::process_collected_fees();
         };
@@ -76,8 +85,13 @@ module 0x1::reconfiguration {
         assert!(v1 > v0.last_reconfiguration_time, 0x1::error::invalid_state(4));
         v0.last_reconfiguration_time = v1;
         v0.epoch = v0.epoch + 1;
-        let v2 = NewEpochEvent{epoch: v0.epoch};
-        0x1::event::emit_event<NewEpochEvent>(&mut v0.events, v2);
+        if (0x1::features::module_event_migration_enabled()) {
+            let v2 = NewEpoch{epoch: v0.epoch};
+            0x1::event::emit<NewEpoch>(v2);
+        };
+        let v3 = NewEpochEvent{epoch: v0.epoch};
+        0x1::event::emit_event<NewEpochEvent>(&mut v0.events, v3);
+        0x1::reconfiguration_state::on_reconfig_finish();
     }
     
     // decompiled from Move bytecode v6

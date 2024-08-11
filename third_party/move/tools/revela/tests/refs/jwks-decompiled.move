@@ -7,7 +7,7 @@ module 0x1::jwks {
         variant: 0x1::copyable_any::Any,
     }
     
-    struct OIDCProvider has drop, store {
+    struct OIDCProvider has copy, drop, store {
         name: vector<u8>,
         config_url: vector<u8>,
     }
@@ -65,7 +65,7 @@ module 0x1::jwks {
         n: 0x1::string::String,
     }
     
-    struct SupportedOIDCProviders has key {
+    struct SupportedOIDCProviders has copy, drop, store, key {
         providers: vector<OIDCProvider>,
     }
     
@@ -127,7 +127,7 @@ module 0x1::jwks {
         0x1::option::extract<JWK>(&mut v0)
     }
     
-    public(friend) fun initialize(arg0: &signer) {
+    public fun initialize(arg0: &signer) {
         0x1::system_addresses::assert_aptos_framework(arg0);
         let v0 = SupportedOIDCProviders{providers: 0x1::vector::empty<OIDCProvider>()};
         move_to<SupportedOIDCProviders>(arg0, v0);
@@ -186,6 +186,18 @@ module 0x1::jwks {
         JWK{variant: 0x1::copyable_any::pack<UnsupportedJWK>(v0)}
     }
     
+    public(friend) fun on_new_epoch(arg0: &signer) acquires SupportedOIDCProviders {
+        0x1::system_addresses::assert_aptos_framework(arg0);
+        if (0x1::config_buffer::does_exist<SupportedOIDCProviders>()) {
+            let v0 = 0x1::config_buffer::extract<SupportedOIDCProviders>();
+            if (exists<SupportedOIDCProviders>(@0x1)) {
+                *borrow_global_mut<SupportedOIDCProviders>(@0x1) = v0;
+            } else {
+                move_to<SupportedOIDCProviders>(arg0, v0);
+            };
+        };
+    }
+    
     fun regenerate_patched_jwks() acquires ObservedJWKs, PatchedJWKs, Patches {
         let v0 = borrow_global<ObservedJWKs>(@0x1).jwks;
         let v1 = &borrow_global<Patches>(@0x1).patches;
@@ -218,6 +230,18 @@ module 0x1::jwks {
         }
     }
     
+    public fun remove_issuer_from_observed_jwks(arg0: &signer, arg1: vector<u8>) : 0x1::option::Option<ProviderJWKs> acquires ObservedJWKs, PatchedJWKs, Patches {
+        0x1::system_addresses::assert_aptos_framework(arg0);
+        let v0 = borrow_global_mut<ObservedJWKs>(@0x1);
+        let v1 = ObservedJWKsUpdated{
+            epoch : 0x1::reconfiguration::current_epoch(), 
+            jwks  : v0.jwks,
+        };
+        0x1::event::emit<ObservedJWKsUpdated>(v1);
+        regenerate_patched_jwks();
+        remove_issuer(&mut v0.jwks, arg1)
+    }
+    
     fun remove_jwk(arg0: &mut ProviderJWKs, arg1: vector<u8>) : 0x1::option::Option<JWK> {
         let v0 = &arg0.jwks;
         let v1 = false;
@@ -240,7 +264,20 @@ module 0x1::jwks {
     
     public fun remove_oidc_provider(arg0: &signer, arg1: vector<u8>) : 0x1::option::Option<vector<u8>> acquires SupportedOIDCProviders {
         0x1::system_addresses::assert_aptos_framework(arg0);
+        0x1::chain_status::assert_genesis();
         remove_oidc_provider_internal(borrow_global_mut<SupportedOIDCProviders>(@0x1), arg1)
+    }
+    
+    public fun remove_oidc_provider_for_next_epoch(arg0: &signer, arg1: vector<u8>) : 0x1::option::Option<vector<u8>> acquires SupportedOIDCProviders {
+        0x1::system_addresses::assert_aptos_framework(arg0);
+        let v0 = if (0x1::config_buffer::does_exist<SupportedOIDCProviders>()) {
+            0x1::config_buffer::extract<SupportedOIDCProviders>()
+        } else {
+            *borrow_global_mut<SupportedOIDCProviders>(@0x1)
+        };
+        let v1 = v0;
+        0x1::config_buffer::upsert<SupportedOIDCProviders>(v1);
+        remove_oidc_provider_internal(&mut v1, arg1)
     }
     
     fun remove_oidc_provider_internal(arg0: &mut SupportedOIDCProviders, arg1: vector<u8>) : 0x1::option::Option<vector<u8>> {
@@ -359,6 +396,7 @@ module 0x1::jwks {
     
     public fun upsert_oidc_provider(arg0: &signer, arg1: vector<u8>, arg2: vector<u8>) : 0x1::option::Option<vector<u8>> acquires SupportedOIDCProviders {
         0x1::system_addresses::assert_aptos_framework(arg0);
+        0x1::chain_status::assert_genesis();
         let v0 = borrow_global_mut<SupportedOIDCProviders>(@0x1);
         let v1 = OIDCProvider{
             name       : arg1, 
@@ -366,6 +404,23 @@ module 0x1::jwks {
         };
         0x1::vector::push_back<OIDCProvider>(&mut v0.providers, v1);
         remove_oidc_provider_internal(v0, arg1)
+    }
+    
+    public fun upsert_oidc_provider_for_next_epoch(arg0: &signer, arg1: vector<u8>, arg2: vector<u8>) : 0x1::option::Option<vector<u8>> acquires SupportedOIDCProviders {
+        0x1::system_addresses::assert_aptos_framework(arg0);
+        let v0 = if (0x1::config_buffer::does_exist<SupportedOIDCProviders>()) {
+            0x1::config_buffer::extract<SupportedOIDCProviders>()
+        } else {
+            *borrow_global_mut<SupportedOIDCProviders>(@0x1)
+        };
+        let v1 = v0;
+        let v2 = OIDCProvider{
+            name       : arg1, 
+            config_url : arg2,
+        };
+        0x1::vector::push_back<OIDCProvider>(&mut v1.providers, v2);
+        0x1::config_buffer::upsert<SupportedOIDCProviders>(v1);
+        remove_oidc_provider_internal(&mut v1, arg1)
     }
     
     fun upsert_provider_jwks(arg0: &mut AllProvidersJWKs, arg1: ProviderJWKs) : 0x1::option::Option<ProviderJWKs> {

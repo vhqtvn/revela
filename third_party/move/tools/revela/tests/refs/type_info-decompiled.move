@@ -22,8 +22,7 @@ module 0x1::type_info {
     }
     
     public fun size_of_val<T0>(arg0: &T0) : u64 {
-        let v0 = 0x1::bcs::to_bytes<T0>(arg0);
-        0x1::vector::length<u8>(&v0)
+        0x1::bcs::serialized_size<T0>(arg0)
     }
     
     public fun struct_name(arg0: &TypeInfo) : vector<u8> {

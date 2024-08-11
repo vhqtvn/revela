@@ -489,6 +489,6 @@ fn update_state(
             dvar.add_write(t, state_time_id);
         }
 
-        Jump(..) | Label(..) | Nop(..) | SaveMem(..) | SaveSpecVar(..) | Prop(..) => {}
+        Jump(..) | Label(..) | Nop(..) | SaveMem(..) | SaveSpecVar(..) | SpecBlock(..) | Prop(..) => {}
     }
 }

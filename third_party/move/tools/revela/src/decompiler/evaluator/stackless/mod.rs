@@ -1499,7 +1499,7 @@ impl<'a> StacklessEvaluationContext<'a> {
                 flushed_variables,
                 cannot_keep_as_expr: false,
             }),
-            Bytecode::Prop(..) | Bytecode::SaveMem(..) | Bytecode::SaveSpecVar(..) => {
+            Bytecode::SpecBlock(_, _) | Bytecode::Prop(..) | Bytecode::SaveMem(..) | Bytecode::SaveSpecVar(..) => {
                 unreachable!()
             }
         }

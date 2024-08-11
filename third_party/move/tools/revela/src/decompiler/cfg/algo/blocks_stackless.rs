@@ -86,8 +86,8 @@ fn update_block_var_usage(bbs: &mut [BasicBlock<usize, StacklessBlockContent>]) 
                 Bytecode::Nop(_) |
                 Bytecode::SaveMem(_, _, _) |
                 Bytecode::SaveSpecVar(_, _, _) |
-                Bytecode::Prop(_, _, _) => {}
-                
+                Bytecode::SpecBlock(_, _) |
+                Bytecode::Prop(_, _, _) => {}               
             }
         }
     }

@@ -113,6 +113,10 @@ module 0x1::staking_config {
         move_to<StakingRewardsConfig>(arg0, v0);
     }
     
+    public fun reward_rate() : (u64, u64) acquires StakingConfig, StakingRewardsConfig {
+        get_reward_rate(borrow_global<StakingConfig>(@0x1))
+    }
+    
     public fun update_recurring_lockup_duration_secs(arg0: &signer, arg1: u64) acquires StakingConfig {
         assert!(arg1 > 0, 0x1::error::invalid_argument(1));
         0x1::system_addresses::assert_aptos_framework(arg0);

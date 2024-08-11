@@ -1,4 +1,13 @@
 module 0x1::voting {
+    struct CreateProposal has drop, store {
+        proposal_id: u64,
+        early_resolution_vote_threshold: 0x1::option::Option<u128>,
+        execution_hash: vector<u8>,
+        expiration_secs: u64,
+        metadata: 0x1::simple_map::SimpleMap<0x1::string::String, vector<u8>>,
+        min_vote_threshold: u128,
+    }
+    
     struct CreateProposalEvent has drop, store {
         proposal_id: u64,
         early_resolution_vote_threshold: 0x1::option::Option<u128>,
@@ -23,6 +32,11 @@ module 0x1::voting {
         resolution_time_secs: u64,
     }
     
+    struct RegisterForum has drop, store {
+        hosting_account: address,
+        proposal_type_info: 0x1::type_info::TypeInfo,
+    }
+    
     struct RegisterForumEvent has drop, store {
         hosting_account: address,
         proposal_type_info: 0x1::type_info::TypeInfo,
@@ -33,6 +47,11 @@ module 0x1::voting {
         yes_votes: u128,
         no_votes: u128,
         resolved_early: bool,
+    }
+    
+    struct Vote has drop, store {
+        proposal_id: u64,
+        num_votes: u64,
     }
     
     struct VoteEvent has drop, store {
@@ -105,7 +124,18 @@ module 0x1::voting {
             resolution_time_secs            : 0,
         };
         0x1::table::add<u64, Proposal<T0>>(&mut v0.proposals, v1, v11);
-        let v12 = CreateProposalEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v12 = CreateProposal{
+                proposal_id                     : v1, 
+                early_resolution_vote_threshold : arg6, 
+                execution_hash                  : arg3, 
+                expiration_secs                 : arg5, 
+                metadata                        : arg7, 
+                min_vote_threshold              : arg4,
+            };
+            0x1::event::emit<CreateProposal>(v12);
+        };
+        let v13 = CreateProposalEvent{
             proposal_id                     : v1, 
             early_resolution_vote_threshold : arg6, 
             execution_hash                  : arg3, 
@@ -113,7 +143,7 @@ module 0x1::voting {
             metadata                        : arg7, 
             min_vote_threshold              : arg4,
         };
-        0x1::event::emit_event<CreateProposalEvent>(&mut v0.events.create_proposal_events, v12);
+        0x1::event::emit_event<CreateProposalEvent>(&mut v0.events.create_proposal_events, v13);
         v1
     }
     
@@ -240,11 +270,18 @@ module 0x1::voting {
             events           : v5, 
             next_proposal_id : 0,
         };
-        let v7 = RegisterForumEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v7 = RegisterForum{
+                hosting_account    : v0, 
+                proposal_type_info : 0x1::type_info::type_of<T0>(),
+            };
+            0x1::event::emit<RegisterForum>(v7);
+        };
+        let v8 = RegisterForumEvent{
             hosting_account    : v0, 
             proposal_type_info : 0x1::type_info::type_of<T0>(),
         };
-        0x1::event::emit_event<RegisterForumEvent>(&mut v6.events.register_forum_events, v7);
+        0x1::event::emit_event<RegisterForumEvent>(&mut v6.events.register_forum_events, v8);
         move_to<VotingForum<T0>>(arg0, v6);
     }
     
@@ -254,21 +291,28 @@ module 0x1::voting {
         let v1 = 0x1::table::borrow_mut<u64, Proposal<T0>>(&mut v0.proposals, arg1);
         let v2 = 0x1::string::utf8(b"IS_MULTI_STEP_PROPOSAL_KEY");
         if (0x1::simple_map::contains_key<0x1::string::String, vector<u8>>(&v1.metadata, &v2)) {
-            let v3 = &v2;
-            let v4 = !0x1::from_bcs::to_bool(*0x1::simple_map::borrow<0x1::string::String, vector<u8>>(&v1.metadata, v3));
-            assert!(v4, 0x1::error::permission_denied(10));
+            let v3 = !0x1::from_bcs::to_bool(*0x1::simple_map::borrow<0x1::string::String, vector<u8>>(&v1.metadata, &v2));
+            assert!(v3, 0x1::error::permission_denied(10));
         };
-        let v5 = can_be_resolved_early<T0>(v1);
+        let v4 = can_be_resolved_early<T0>(v1);
         v1.is_resolved = true;
         v1.resolution_time_secs = 0x1::timestamp::now_seconds();
-        let v6 = v1.yes_votes;
-        let v7 = ResolveProposal{
-            proposal_id    : arg1, 
-            yes_votes      : v6, 
-            no_votes       : v1.no_votes, 
-            resolved_early : v5,
+        if (0x1::features::module_event_migration_enabled()) {
+            let v5 = ResolveProposal{
+                proposal_id    : arg1, 
+                yes_votes      : v1.yes_votes, 
+                no_votes       : v1.no_votes, 
+                resolved_early : v4,
+            };
+            0x1::event::emit<ResolveProposal>(v5);
         };
-        0x1::event::emit_event<ResolveProposal>(&mut v0.events.resolve_proposal_events, v7);
+        let v6 = ResolveProposal{
+            proposal_id    : arg1, 
+            yes_votes      : v1.yes_votes, 
+            no_votes       : v1.no_votes, 
+            resolved_early : v4,
+        };
+        0x1::event::emit_event<ResolveProposal>(&mut v0.events.resolve_proposal_events, v6);
         0x1::option::extract<T0>(&mut v1.execution_content)
     }
     
@@ -297,13 +341,22 @@ module 0x1::voting {
             v1.execution_hash = arg2;
         };
         let v9 = can_be_resolved_early<T0>(v1);
-        let v10 = ResolveProposal{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v10 = ResolveProposal{
+                proposal_id    : arg1, 
+                yes_votes      : v1.yes_votes, 
+                no_votes       : v1.no_votes, 
+                resolved_early : v9,
+            };
+            0x1::event::emit<ResolveProposal>(v10);
+        };
+        let v11 = ResolveProposal{
             proposal_id    : arg1, 
             yes_votes      : v1.yes_votes, 
             no_votes       : v1.no_votes, 
             resolved_early : v9,
         };
-        0x1::event::emit_event<ResolveProposal>(&mut v0.events.resolve_proposal_events, v10);
+        0x1::event::emit_event<ResolveProposal>(&mut v0.events.resolve_proposal_events, v11);
     }
     
     public fun vote<T0: store>(arg0: &T0, arg1: address, arg2: u64, arg3: u64, arg4: bool) acquires VotingForum {
@@ -333,11 +386,18 @@ module 0x1::voting {
         } else {
             0x1::simple_map::add<0x1::string::String, vector<u8>>(&mut v1.metadata, v8, v7);
         };
-        let v9 = VoteEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v9 = Vote{
+                proposal_id : arg2, 
+                num_votes   : arg3,
+            };
+            0x1::event::emit<Vote>(v9);
+        };
+        let v10 = VoteEvent{
             proposal_id : arg2, 
             num_votes   : arg3,
         };
-        0x1::event::emit_event<VoteEvent>(&mut v0.events.vote_events, v9);
+        0x1::event::emit_event<VoteEvent>(&mut v0.events.vote_events, v10);
     }
     
     // decompiled from Move bytecode v6

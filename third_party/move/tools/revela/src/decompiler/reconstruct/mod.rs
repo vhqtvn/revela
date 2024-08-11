@@ -798,7 +798,7 @@ impl<'a> SourceGen<'a> {
 
                 Nop(_) => {}
 
-                SaveMem(_, _, _) | SaveSpecVar(_, _, _) | Prop(_, _, _) => {
+                SpecBlock(_, _) | SaveMem(_, _, _) | SaveSpecVar(_, _, _) | Prop(_, _, _) => {
                     unreachable!("specification opcode should have been removed")
                 }
             }

@@ -98,7 +98,7 @@ module 0x1::account {
         create_account_unchecked(arg0)
     }
     
-    fun create_account_if_does_not_exist(arg0: address) {
+    public fun create_account_if_does_not_exist(arg0: address) {
         if (!exists<Account>(arg0)) {
             create_account(arg0);
         };
@@ -326,6 +326,10 @@ module 0x1::account {
         update_auth_key_and_originating_address_table(v0, v1, v9);
     }
     
+    entry fun rotate_authentication_key_call(arg0: &signer, arg1: vector<u8>) acquires Account {
+        rotate_authentication_key_internal(arg0, arg1);
+    }
+    
     public(friend) fun rotate_authentication_key_internal(arg0: &signer, arg1: vector<u8>) acquires Account {
         let v0 = 0x1::signer::address_of(arg0);
         assert!(exists_at(v0), 0x1::error::not_found(2));
@@ -357,13 +361,15 @@ module 0x1::account {
             assert!(arg0 == 0x1::table::remove<address, address>(v0, v1), 0x1::error::not_found(13));
         };
         0x1::table::add<address, address>(v0, 0x1::from_bcs::to_address(arg2), arg0);
-        let v2 = arg1.authentication_key;
-        let v3 = KeyRotation{
-            account                : arg0, 
-            old_authentication_key : v2, 
-            new_authentication_key : arg2,
+        if (0x1::features::module_event_migration_enabled()) {
+            let v2 = arg1.authentication_key;
+            let v3 = KeyRotation{
+                account                : arg0, 
+                old_authentication_key : v2, 
+                new_authentication_key : arg2,
+            };
+            0x1::event::emit<KeyRotation>(v3);
         };
-        0x1::event::emit<KeyRotation>(v3);
         let v4 = KeyRotationEvent{
             old_authentication_key : arg1.authentication_key, 
             new_authentication_key : arg2,

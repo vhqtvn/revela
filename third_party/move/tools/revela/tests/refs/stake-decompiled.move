@@ -1,4 +1,9 @@
 module 0x1::stake {
+    struct AddStake has drop, store {
+        pool_address: address,
+        amount_added: u64,
+    }
+    
     struct AddStakeEvent has drop, store {
         pool_address: address,
         amount_added: u64,
@@ -12,9 +17,20 @@ module 0x1::stake {
         mint_cap: 0x1::coin::MintCapability<0x1::aptos_coin::AptosCoin>,
     }
     
+    struct DistributeRewards has drop, store {
+        pool_address: address,
+        rewards_amount: u64,
+    }
+    
     struct DistributeRewardsEvent has drop, store {
         pool_address: address,
         rewards_amount: u64,
+    }
+    
+    struct IncreaseLockup has drop, store {
+        pool_address: address,
+        old_locked_until_secs: u64,
+        new_locked_until_secs: u64,
     }
     
     struct IncreaseLockupEvent has drop, store {
@@ -28,7 +44,15 @@ module 0x1::stake {
         failed_proposals: u64,
     }
     
+    struct JoinValidatorSet has drop, store {
+        pool_address: address,
+    }
+    
     struct JoinValidatorSetEvent has drop, store {
+        pool_address: address,
+    }
+    
+    struct LeaveValidatorSet has drop, store {
         pool_address: address,
     }
     
@@ -40,19 +64,40 @@ module 0x1::stake {
         pool_address: address,
     }
     
+    struct ReactivateStake has drop, store {
+        pool_address: address,
+        amount: u64,
+    }
+    
     struct ReactivateStakeEvent has drop, store {
         pool_address: address,
         amount: u64,
+    }
+    
+    struct RegisterValidatorCandidate has drop, store {
+        pool_address: address,
     }
     
     struct RegisterValidatorCandidateEvent has drop, store {
         pool_address: address,
     }
     
+    struct RotateConsensusKey has drop, store {
+        pool_address: address,
+        old_consensus_pubkey: vector<u8>,
+        new_consensus_pubkey: vector<u8>,
+    }
+    
     struct RotateConsensusKeyEvent has drop, store {
         pool_address: address,
         old_consensus_pubkey: vector<u8>,
         new_consensus_pubkey: vector<u8>,
+    }
+    
+    struct SetOperator has drop, store {
+        pool_address: address,
+        old_operator: address,
+        new_operator: address,
     }
     
     struct SetOperatorEvent has drop, store {
@@ -83,9 +128,22 @@ module 0x1::stake {
         leave_validator_set_events: 0x1::event::EventHandle<LeaveValidatorSetEvent>,
     }
     
+    struct UnlockStake has drop, store {
+        pool_address: address,
+        amount_unlocked: u64,
+    }
+    
     struct UnlockStakeEvent has drop, store {
         pool_address: address,
         amount_unlocked: u64,
+    }
+    
+    struct UpdateNetworkAndFullnodeAddresses has drop, store {
+        pool_address: address,
+        old_network_addresses: vector<u8>,
+        new_network_addresses: vector<u8>,
+        old_fullnode_addresses: vector<u8>,
+        new_fullnode_addresses: vector<u8>,
     }
     
     struct UpdateNetworkAndFullnodeAddressesEvent has drop, store {
@@ -117,13 +175,18 @@ module 0x1::stake {
         validators: vector<IndividualValidatorPerformance>,
     }
     
-    struct ValidatorSet has key {
+    struct ValidatorSet has copy, drop, store, key {
         consensus_scheme: u8,
         active_validators: vector<ValidatorInfo>,
         pending_inactive: vector<ValidatorInfo>,
         pending_active: vector<ValidatorInfo>,
         total_voting_power: u128,
         total_joining_power: u128,
+    }
+    
+    struct WithdrawStake has drop, store {
+        pool_address: address,
+        amount_withdrawn: u64,
     }
     
     struct WithdrawStakeEvent has drop, store {
@@ -146,6 +209,7 @@ module 0x1::stake {
     }
     
     public fun add_stake_with_cap(arg0: &OwnerCapability, arg1: 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>) acquires StakePool, ValidatorSet {
+        assert_reconfig_not_in_progress();
         let v0 = arg0.pool_address;
         assert_stake_pool_exists(v0);
         let v1 = 0x1::coin::value<0x1::aptos_coin::AptosCoin>(&arg1);
@@ -173,11 +237,18 @@ module 0x1::stake {
         let v7 = 0x1::staking_config::get();
         let (_, v9) = 0x1::staking_config::get_required_stake(&v7);
         assert!(get_next_epoch_voting_power(v6) <= v9, 0x1::error::invalid_argument(7));
-        let v10 = AddStakeEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v10 = AddStake{
+                pool_address : v0, 
+                amount_added : v1,
+            };
+            0x1::event::emit<AddStake>(v10);
+        };
+        let v11 = AddStakeEvent{
             pool_address : v0, 
             amount_added : v1,
         };
-        0x1::event::emit_event<AddStakeEvent>(&mut v6.add_stake_events, v10);
+        0x1::event::emit_event<AddStakeEvent>(&mut v6.add_stake_events, v11);
     }
     
     public(friend) fun add_transaction_fee(arg0: address, arg1: 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>) acquires ValidatorFees {
@@ -190,6 +261,16 @@ module 0x1::stake {
         };
     }
     
+    fun addresses_from_validator_infos(arg0: &vector<ValidatorInfo>) : vector<address> {
+        let v0 = vector[];
+        let v1 = 0;
+        while (v1 < 0x1::vector::length<ValidatorInfo>(arg0)) {
+            0x1::vector::push_back<address>(&mut v0, 0x1::vector::borrow<ValidatorInfo>(arg0, v1).addr);
+            v1 = v1 + 1;
+        };
+        v0
+    }
+    
     fun append<T0>(arg0: &mut vector<T0>, arg1: &mut vector<T0>) {
         while (!0x1::vector::is_empty<T0>(arg1)) {
             0x1::vector::push_back<T0>(arg0, 0x1::vector::pop_back<T0>(arg1));
@@ -198,6 +279,10 @@ module 0x1::stake {
     
     fun assert_owner_cap_exists(arg0: address) {
         assert!(exists<OwnerCapability>(arg0), 0x1::error::not_found(15));
+    }
+    
+    fun assert_reconfig_not_in_progress() {
+        assert!(!0x1::reconfiguration_state::is_in_progress(), 0x1::error::invalid_state(20));
     }
     
     fun assert_stake_pool_exists(arg0: address) {
@@ -222,6 +307,10 @@ module 0x1::stake {
         } else {
             borrow_global_mut<AllowedValidators>(v0).accounts = arg1;
         };
+    }
+    
+    public fun cur_validator_consensus_infos() : vector<0x1::validator_consensus_info::ValidatorConsensusInfo> acquires ValidatorSet {
+        validator_consensus_infos_from_validator_set(borrow_global<ValidatorSet>(@0x1))
     }
     
     public fun deposit_owner_cap(arg0: &signer, arg1: OwnerCapability) {
@@ -314,6 +403,14 @@ module 0x1::stake {
         arg0.pool_address
     }
     
+    fun get_reconfig_start_time_secs() : u64 {
+        if (0x1::reconfiguration_state::is_initialized()) {
+            0x1::reconfiguration_state::start_time_secs()
+        } else {
+            0x1::timestamp::now_seconds()
+        }
+    }
+    
     public fun get_remaining_lockup_secs(arg0: address) : u64 acquires StakePool {
         assert_stake_pool_exists(arg0);
         let v0 = borrow_global<StakePool>(arg0).locked_until_secs;
@@ -381,12 +478,20 @@ module 0x1::stake {
         let v4 = 0x1::timestamp::now_seconds() + 0x1::staking_config::get_recurring_lockup_duration(&v1);
         assert!(v3 < v4, 0x1::error::invalid_argument(18));
         v2.locked_until_secs = v4;
-        let v5 = IncreaseLockupEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v5 = IncreaseLockup{
+                pool_address          : v0, 
+                old_locked_until_secs : v3, 
+                new_locked_until_secs : v4,
+            };
+            0x1::event::emit<IncreaseLockup>(v5);
+        };
+        let v6 = IncreaseLockupEvent{
             pool_address          : v0, 
             old_locked_until_secs : v3, 
             new_locked_until_secs : v4,
         };
-        0x1::event::emit_event<IncreaseLockupEvent>(&mut v2.increase_lockup_events, v5);
+        0x1::event::emit_event<IncreaseLockupEvent>(&mut v2.increase_lockup_events, v6);
     }
     
     public(friend) fun initialize(arg0: &signer) {
@@ -516,6 +621,7 @@ module 0x1::stake {
     }
     
     public(friend) fun join_validator_set_internal(arg0: &signer, arg1: address) acquires StakePool, ValidatorConfig, ValidatorSet {
+        assert_reconfig_not_in_progress();
         assert_stake_pool_exists(arg1);
         let v0 = borrow_global_mut<StakePool>(arg1);
         assert!(0x1::signer::address_of(arg0) == v0.operator_address, 0x1::error::unauthenticated(9));
@@ -535,11 +641,16 @@ module 0x1::stake {
         let v9 = 0x1::vector::length<ValidatorInfo>(&v7.active_validators);
         let v10 = v9 + 0x1::vector::length<ValidatorInfo>(&v7.pending_active) <= 65536;
         assert!(v10, 0x1::error::invalid_argument(12));
-        let v11 = JoinValidatorSetEvent{pool_address: arg1};
-        0x1::event::emit_event<JoinValidatorSetEvent>(&mut v0.join_validator_set_events, v11);
+        if (0x1::features::module_event_migration_enabled()) {
+            let v11 = JoinValidatorSet{pool_address: arg1};
+            0x1::event::emit<JoinValidatorSet>(v11);
+        };
+        let v12 = JoinValidatorSetEvent{pool_address: arg1};
+        0x1::event::emit_event<JoinValidatorSetEvent>(&mut v0.join_validator_set_events, v12);
     }
     
     public entry fun leave_validator_set(arg0: &signer, arg1: address) acquires StakePool, ValidatorSet {
+        assert_reconfig_not_in_progress();
         let v0 = 0x1::staking_config::get();
         assert!(0x1::staking_config::get_allow_validator_set_change(&v0), 0x1::error::invalid_argument(10));
         assert_stake_pool_exists(arg1);
@@ -562,9 +673,79 @@ module 0x1::stake {
             let v7 = 0x1::vector::swap_remove<ValidatorInfo>(&mut v2.active_validators, 0x1::option::extract<u64>(v6));
             assert!(0x1::vector::length<ValidatorInfo>(&v2.active_validators) > 0, 0x1::error::invalid_state(6));
             0x1::vector::push_back<ValidatorInfo>(&mut v2.pending_inactive, v7);
-            let v8 = LeaveValidatorSetEvent{pool_address: arg1};
-            0x1::event::emit_event<LeaveValidatorSetEvent>(&mut v1.leave_validator_set_events, v8);
+            if (0x1::features::module_event_migration_enabled()) {
+                let v8 = LeaveValidatorSet{pool_address: arg1};
+                0x1::event::emit<LeaveValidatorSet>(v8);
+            };
+            let v9 = LeaveValidatorSetEvent{pool_address: arg1};
+            0x1::event::emit_event<LeaveValidatorSetEvent>(&mut v1.leave_validator_set_events, v9);
         };
+    }
+    
+    public fun next_validator_consensus_infos() : vector<0x1::validator_consensus_info::ValidatorConsensusInfo> acquires StakePool, ValidatorConfig, ValidatorFees, ValidatorPerformance, ValidatorSet {
+        let v0 = borrow_global<ValidatorSet>(@0x1);
+        let v1 = 0x1::staking_config::get();
+        let (v2, _) = 0x1::staking_config::get_required_stake(&v1);
+        let (v4, v5) = 0x1::staking_config::get_reward_rate(&v1);
+        let v6 = 0x1::vector::empty<ValidatorInfo>();
+        let v7 = 0;
+        let v8 = 0;
+        let v9 = 0;
+        let v10 = 0x1::vector::length<ValidatorInfo>(&v0.active_validators);
+        while (v8 < v10 + 0x1::vector::length<ValidatorInfo>(&v0.pending_active)) {
+            let v11 = v8 < v10;
+            let v12 = if (v8 < v10) {
+                0x1::vector::borrow<ValidatorInfo>(&v0.active_validators, v8)
+            } else {
+                0x1::vector::borrow<ValidatorInfo>(&v0.pending_active, v8 - v10)
+            };
+            let v13 = borrow_global<StakePool>(v12.addr);
+            let v14 = 0x1::coin::value<0x1::aptos_coin::AptosCoin>(&v13.active);
+            let v15 = if (v11 && v14 > 0) {
+                let v16 = 0x1::vector::borrow<IndividualValidatorPerformance>(&borrow_global<ValidatorPerformance>(@0x1).validators, v12.config.validator_index);
+                calculate_rewards_amount(v14, v16.successful_proposals, v16.successful_proposals + v16.failed_proposals, v4, v5)
+            } else {
+                0
+            };
+            let v17 = 0;
+            if (0x1::features::collect_and_distribute_gas_fees()) {
+                let v18 = &borrow_global<ValidatorFees>(@0x1).fees_table;
+                if (0x1::table::contains<address, 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>>(v18, v12.addr)) {
+                    v17 = 0x1::coin::value<0x1::aptos_coin::AptosCoin>(0x1::table::borrow<address, 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>>(v18, v12.addr));
+                };
+            };
+            let v19 = if (get_reconfig_start_time_secs() >= v13.locked_until_secs) {
+                0
+            } else {
+                0x1::coin::value<0x1::aptos_coin::AptosCoin>(&v13.pending_inactive)
+            };
+            let v20 = v14 + v19 + 0x1::coin::value<0x1::aptos_coin::AptosCoin>(&v13.pending_active) + v15 + v17;
+            if (v20 >= v2) {
+                let v21 = *borrow_global<ValidatorConfig>(v12.addr);
+                v21.validator_index = v7;
+                let v22 = ValidatorInfo{
+                    addr         : v12.addr, 
+                    voting_power : v20, 
+                    config       : v21,
+                };
+                v9 = v9 + (v20 as u128);
+                0x1::vector::push_back<ValidatorInfo>(&mut v6, v22);
+                v7 = v7 + 1;
+            };
+            v8 = v8 + 1;
+        };
+        let v23 = v0.consensus_scheme;
+        let v24 = 0x1::vector::empty<ValidatorInfo>();
+        let v25 = 0x1::vector::empty<ValidatorInfo>();
+        let v26 = ValidatorSet{
+            consensus_scheme    : v23, 
+            active_validators   : v6, 
+            pending_inactive    : v24, 
+            pending_active      : v25, 
+            total_voting_power  : v9, 
+            total_joining_power : 0,
+        };
+        validator_consensus_infos_from_validator_set(&v26)
     }
     
     public(friend) fun on_new_epoch() acquires AptosCoinCapabilities, StakePool, ValidatorConfig, ValidatorFees, ValidatorPerformance, ValidatorSet {
@@ -614,9 +795,14 @@ module 0x1::stake {
             };
             0x1::vector::push_back<IndividualValidatorPerformance>(&mut v2.validators, v17);
             let v18 = borrow_global_mut<StakePool>(v16.addr);
-            if (v18.locked_until_secs <= 0x1::timestamp::now_seconds()) {
-                let v19 = 0x1::timestamp::now_seconds() + 0x1::staking_config::get_recurring_lockup_duration(&v1);
-                v18.locked_until_secs = v19;
+            let v19 = 0x1::timestamp::now_seconds();
+            let v20 = if (0x1::chain_status::is_operating()) {
+                get_reconfig_start_time_secs()
+            } else {
+                v19
+            };
+            if (v18.locked_until_secs <= v20) {
+                v18.locked_until_secs = v19 + 0x1::staking_config::get_recurring_lockup_duration(&v1);
             };
             v15 = v15 + 1;
         };
@@ -626,26 +812,36 @@ module 0x1::stake {
     }
     
     public entry fun reactivate_stake(arg0: &signer, arg1: u64) acquires OwnerCapability, StakePool {
+        assert_reconfig_not_in_progress();
         let v0 = 0x1::signer::address_of(arg0);
         assert_owner_cap_exists(v0);
         reactivate_stake_with_cap(borrow_global<OwnerCapability>(v0), arg1);
     }
     
     public fun reactivate_stake_with_cap(arg0: &OwnerCapability, arg1: u64) acquires StakePool {
+        assert_reconfig_not_in_progress();
         let v0 = arg0.pool_address;
         assert_stake_pool_exists(v0);
         let v1 = borrow_global_mut<StakePool>(v0);
         let v2 = 0x1::math64::min(arg1, 0x1::coin::value<0x1::aptos_coin::AptosCoin>(&v1.pending_inactive));
         let v3 = 0x1::coin::extract<0x1::aptos_coin::AptosCoin>(&mut v1.pending_inactive, v2);
         0x1::coin::merge<0x1::aptos_coin::AptosCoin>(&mut v1.active, v3);
-        let v4 = ReactivateStakeEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v4 = ReactivateStake{
+                pool_address : v0, 
+                amount       : v2,
+            };
+            0x1::event::emit<ReactivateStake>(v4);
+        };
+        let v5 = ReactivateStakeEvent{
             pool_address : v0, 
             amount       : v2,
         };
-        0x1::event::emit_event<ReactivateStakeEvent>(&mut v1.reactivate_stake_events, v4);
+        0x1::event::emit_event<ReactivateStakeEvent>(&mut v1.reactivate_stake_events, v5);
     }
     
     public fun remove_validators(arg0: &signer, arg1: &vector<address>) acquires ValidatorSet {
+        assert_reconfig_not_in_progress();
         0x1::system_addresses::assert_aptos_framework(arg0);
         let v0 = borrow_global_mut<ValidatorSet>(@0x1);
         let v1 = &mut v0.active_validators;
@@ -661,6 +857,7 @@ module 0x1::stake {
     }
     
     public entry fun rotate_consensus_key(arg0: &signer, arg1: address, arg2: vector<u8>, arg3: vector<u8>) acquires StakePool, ValidatorConfig {
+        assert_reconfig_not_in_progress();
         assert_stake_pool_exists(arg1);
         let v0 = borrow_global_mut<StakePool>(arg1);
         assert!(0x1::signer::address_of(arg0) == v0.operator_address, 0x1::error::unauthenticated(9));
@@ -672,12 +869,20 @@ module 0x1::stake {
         let v5 = 0x1::option::is_some<0x1::bls12381::PublicKeyWithPoP>(&mut v4);
         assert!(v5, 0x1::error::invalid_argument(11));
         v1.consensus_pubkey = arg2;
-        let v6 = RotateConsensusKeyEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v6 = RotateConsensusKey{
+                pool_address         : arg1, 
+                old_consensus_pubkey : v2, 
+                new_consensus_pubkey : arg2,
+            };
+            0x1::event::emit<RotateConsensusKey>(v6);
+        };
+        let v7 = RotateConsensusKeyEvent{
             pool_address         : arg1, 
             old_consensus_pubkey : v2, 
             new_consensus_pubkey : arg2,
         };
-        0x1::event::emit_event<RotateConsensusKeyEvent>(&mut v0.rotate_consensus_key_events, v6);
+        0x1::event::emit_event<RotateConsensusKeyEvent>(&mut v0.rotate_consensus_key_events, v7);
     }
     
     public entry fun set_delegated_voter(arg0: &signer, arg1: address) acquires OwnerCapability, StakePool {
@@ -702,13 +907,22 @@ module 0x1::stake {
         let v0 = arg0.pool_address;
         assert_stake_pool_exists(v0);
         let v1 = borrow_global_mut<StakePool>(v0);
+        let v2 = v1.operator_address;
         v1.operator_address = arg1;
-        let v2 = SetOperatorEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v3 = SetOperator{
+                pool_address : v0, 
+                old_operator : v2, 
+                new_operator : arg1,
+            };
+            0x1::event::emit<SetOperator>(v3);
+        };
+        let v4 = SetOperatorEvent{
             pool_address : v0, 
-            old_operator : v1.operator_address, 
+            old_operator : v2, 
             new_operator : arg1,
         };
-        0x1::event::emit_event<SetOperatorEvent>(&mut v1.set_operator_events, v2);
+        0x1::event::emit_event<SetOperatorEvent>(&mut v1.set_operator_events, v4);
     }
     
     public fun stake_pool_exists(arg0: address) : bool {
@@ -722,12 +936,14 @@ module 0x1::stake {
     }
     
     public entry fun unlock(arg0: &signer, arg1: u64) acquires OwnerCapability, StakePool {
+        assert_reconfig_not_in_progress();
         let v0 = 0x1::signer::address_of(arg0);
         assert_owner_cap_exists(v0);
         unlock_with_cap(arg1, borrow_global<OwnerCapability>(v0));
     }
     
     public fun unlock_with_cap(arg0: u64, arg1: &OwnerCapability) acquires StakePool {
+        assert_reconfig_not_in_progress();
         if (arg0 == 0) {
             return
         };
@@ -737,14 +953,22 @@ module 0x1::stake {
         let v2 = 0x1::math64::min(arg0, 0x1::coin::value<0x1::aptos_coin::AptosCoin>(&v1.active));
         let v3 = 0x1::coin::extract<0x1::aptos_coin::AptosCoin>(&mut v1.active, v2);
         0x1::coin::merge<0x1::aptos_coin::AptosCoin>(&mut v1.pending_inactive, v3);
-        let v4 = UnlockStakeEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v4 = UnlockStake{
+                pool_address    : v0, 
+                amount_unlocked : v2,
+            };
+            0x1::event::emit<UnlockStake>(v4);
+        };
+        let v5 = UnlockStakeEvent{
             pool_address    : v0, 
             amount_unlocked : v2,
         };
-        0x1::event::emit_event<UnlockStakeEvent>(&mut v1.unlock_stake_events, v4);
+        0x1::event::emit_event<UnlockStakeEvent>(&mut v1.unlock_stake_events, v5);
     }
     
     public entry fun update_network_and_fullnode_addresses(arg0: &signer, arg1: address, arg2: vector<u8>, arg3: vector<u8>) acquires StakePool, ValidatorConfig {
+        assert_reconfig_not_in_progress();
         assert_stake_pool_exists(arg1);
         let v0 = borrow_global_mut<StakePool>(arg1);
         assert!(0x1::signer::address_of(arg0) == v0.operator_address, 0x1::error::unauthenticated(9));
@@ -754,14 +978,24 @@ module 0x1::stake {
         v1.network_addresses = arg2;
         let v3 = v1.fullnode_addresses;
         v1.fullnode_addresses = arg3;
-        let v4 = UpdateNetworkAndFullnodeAddressesEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v4 = UpdateNetworkAndFullnodeAddresses{
+                pool_address           : arg1, 
+                old_network_addresses  : v2, 
+                new_network_addresses  : arg2, 
+                old_fullnode_addresses : v3, 
+                new_fullnode_addresses : arg3,
+            };
+            0x1::event::emit<UpdateNetworkAndFullnodeAddresses>(v4);
+        };
+        let v5 = UpdateNetworkAndFullnodeAddressesEvent{
             pool_address           : arg1, 
             old_network_addresses  : v2, 
             new_network_addresses  : arg2, 
             old_fullnode_addresses : v3, 
             new_fullnode_addresses : arg3,
         };
-        0x1::event::emit_event<UpdateNetworkAndFullnodeAddressesEvent>(&mut v0.update_network_and_fullnode_addresses_events, v4);
+        0x1::event::emit_event<UpdateNetworkAndFullnodeAddressesEvent>(&mut v0.update_network_and_fullnode_addresses_events, v5);
     }
     
     public(friend) fun update_performance_statistics(arg0: 0x1::option::Option<u64>, arg1: vector<u64>) acquires ValidatorPerformance {
@@ -794,24 +1028,32 @@ module 0x1::stake {
         let (v5, v6) = 0x1::staking_config::get_reward_rate(arg2);
         let v7 = distribute_rewards(&mut v0.active, v3, v4, v5, v6);
         let v8 = distribute_rewards(&mut v0.pending_inactive, v3, v4, v5, v6);
-        let v9 = 0x1::coin::extract_all<0x1::aptos_coin::AptosCoin>(&mut v0.pending_active);
-        0x1::coin::merge<0x1::aptos_coin::AptosCoin>(&mut v0.active, v9);
+        let v9 = v7 + v8;
+        let v10 = 0x1::coin::extract_all<0x1::aptos_coin::AptosCoin>(&mut v0.pending_active);
+        0x1::coin::merge<0x1::aptos_coin::AptosCoin>(&mut v0.active, v10);
         if (0x1::features::collect_and_distribute_gas_fees()) {
-            let v10 = &mut borrow_global_mut<ValidatorFees>(@0x1).fees_table;
-            if (0x1::table::contains<address, 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>>(v10, arg1)) {
-                let v11 = 0x1::table::remove<address, 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>>(v10, arg1);
-                0x1::coin::merge<0x1::aptos_coin::AptosCoin>(&mut v0.active, v11);
+            let v11 = &mut borrow_global_mut<ValidatorFees>(@0x1).fees_table;
+            if (0x1::table::contains<address, 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>>(v11, arg1)) {
+                let v12 = 0x1::table::remove<address, 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>>(v11, arg1);
+                0x1::coin::merge<0x1::aptos_coin::AptosCoin>(&mut v0.active, v12);
             };
         };
-        if (0x1::timestamp::now_seconds() >= v0.locked_until_secs) {
-            let v12 = 0x1::coin::extract_all<0x1::aptos_coin::AptosCoin>(&mut v0.pending_inactive);
-            0x1::coin::merge<0x1::aptos_coin::AptosCoin>(&mut v0.inactive, v12);
+        if (get_reconfig_start_time_secs() >= v0.locked_until_secs) {
+            let v13 = 0x1::coin::extract_all<0x1::aptos_coin::AptosCoin>(&mut v0.pending_inactive);
+            0x1::coin::merge<0x1::aptos_coin::AptosCoin>(&mut v0.inactive, v13);
         };
-        let v13 = DistributeRewardsEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v14 = DistributeRewards{
+                pool_address   : arg1, 
+                rewards_amount : v9,
+            };
+            0x1::event::emit<DistributeRewards>(v14);
+        };
+        let v15 = DistributeRewardsEvent{
             pool_address   : arg1, 
-            rewards_amount : v7 + v8,
+            rewards_amount : v9,
         };
-        0x1::event::emit_event<DistributeRewardsEvent>(&mut v0.distribute_rewards_events, v13);
+        0x1::event::emit_event<DistributeRewardsEvent>(&mut v0.distribute_rewards_events, v15);
     }
     
     fun update_voting_power_increase(arg0: u64) acquires ValidatorSet {
@@ -824,7 +1066,32 @@ module 0x1::stake {
         };
     }
     
+    fun validator_consensus_infos_from_validator_set(arg0: &ValidatorSet) : vector<0x1::validator_consensus_info::ValidatorConsensusInfo> {
+        let v0 = 0x1::vector::empty<0x1::validator_consensus_info::ValidatorConsensusInfo>();
+        let v1 = 0;
+        while (v1 < 0x1::vector::length<ValidatorInfo>(&arg0.active_validators) + 0x1::vector::length<ValidatorInfo>(&arg0.pending_inactive)) {
+            0x1::vector::push_back<0x1::validator_consensus_info::ValidatorConsensusInfo>(&mut v0, 0x1::validator_consensus_info::default());
+            v1 = v1 + 1;
+        };
+        let v2 = &arg0.active_validators;
+        let v3 = 0;
+        while (v3 < 0x1::vector::length<ValidatorInfo>(v2)) {
+            let v4 = 0x1::vector::borrow<ValidatorInfo>(v2, v3);
+            *0x1::vector::borrow_mut<0x1::validator_consensus_info::ValidatorConsensusInfo>(&mut v0, v4.config.validator_index) = 0x1::validator_consensus_info::new(v4.addr, v4.config.consensus_pubkey, v4.voting_power);
+            v3 = v3 + 1;
+        };
+        let v5 = &arg0.pending_inactive;
+        let v6 = 0;
+        while (v6 < 0x1::vector::length<ValidatorInfo>(v5)) {
+            let v7 = 0x1::vector::borrow<ValidatorInfo>(v5, v6);
+            *0x1::vector::borrow_mut<0x1::validator_consensus_info::ValidatorConsensusInfo>(&mut v0, v7.config.validator_index) = 0x1::validator_consensus_info::new(v7.addr, v7.config.consensus_pubkey, v7.voting_power);
+            v6 = v6 + 1;
+        };
+        v0
+    }
+    
     public fun withdraw_with_cap(arg0: &OwnerCapability, arg1: u64) : 0x1::coin::Coin<0x1::aptos_coin::AptosCoin> acquires StakePool, ValidatorSet {
+        assert_reconfig_not_in_progress();
         let v0 = arg0.pool_address;
         assert_stake_pool_exists(v0);
         let v1 = borrow_global_mut<StakePool>(v0);
@@ -837,11 +1104,18 @@ module 0x1::stake {
         if (v4 == 0) {
             return 0x1::coin::zero<0x1::aptos_coin::AptosCoin>()
         };
-        let v5 = WithdrawStakeEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v5 = WithdrawStake{
+                pool_address     : v0, 
+                amount_withdrawn : v4,
+            };
+            0x1::event::emit<WithdrawStake>(v5);
+        };
+        let v6 = WithdrawStakeEvent{
             pool_address     : v0, 
             amount_withdrawn : v4,
         };
-        0x1::event::emit_event<WithdrawStakeEvent>(&mut v1.withdraw_stake_events, v5);
+        0x1::event::emit_event<WithdrawStakeEvent>(&mut v1.withdraw_stake_events, v6);
         0x1::coin::extract<0x1::aptos_coin::AptosCoin>(&mut v1.inactive, v4)
     }
     

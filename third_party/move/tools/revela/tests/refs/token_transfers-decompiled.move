@@ -6,13 +6,31 @@ module 0x1337::token_transfers {
         claim_events: 0x1::event::EventHandle<TokenClaimEvent>,
     }
     
+    struct TokenCancelOffer has drop, store {
+        to_address: address,
+        token_id: 0x1337::token::TokenId,
+        amount: u64,
+    }
+    
     struct TokenCancelOfferEvent has drop, store {
         to_address: address,
         token_id: 0x1337::token::TokenId,
         amount: u64,
     }
     
+    struct TokenClaim has drop, store {
+        to_address: address,
+        token_id: 0x1337::token::TokenId,
+        amount: u64,
+    }
+    
     struct TokenClaimEvent has drop, store {
+        to_address: address,
+        token_id: 0x1337::token::TokenId,
+        amount: u64,
+    }
+    
+    struct TokenOffer has drop, store {
         to_address: address,
         token_id: 0x1337::token::TokenId,
         amount: u64,
@@ -36,13 +54,21 @@ module 0x1337::token_transfers {
         let v2 = 0x1::table::remove<TokenOfferId, 0x1337::token::Token>(v1, create_token_offer_id(arg1, arg2));
         let v3 = 0x1337::token::get_token_amount(&v2);
         0x1337::token::deposit_token(arg0, v2);
-        let v4 = &mut borrow_global_mut<PendingClaims>(v0).cancel_offer_events;
-        let v5 = TokenCancelOfferEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v4 = TokenCancelOffer{
+                to_address : arg1, 
+                token_id   : arg2, 
+                amount     : v3,
+            };
+            0x1::event::emit<TokenCancelOffer>(v4);
+        };
+        let v5 = &mut borrow_global_mut<PendingClaims>(v0).cancel_offer_events;
+        let v6 = TokenCancelOfferEvent{
             to_address : arg1, 
             token_id   : arg2, 
             amount     : v3,
         };
-        0x1::event::emit_event<TokenCancelOfferEvent>(v4, v5);
+        0x1::event::emit_event<TokenCancelOfferEvent>(v5, v6);
     }
     
     public entry fun cancel_offer_script(arg0: signer, arg1: address, arg2: address, arg3: 0x1::string::String, arg4: 0x1::string::String, arg5: u64) acquires PendingClaims {
@@ -57,13 +83,21 @@ module 0x1337::token_transfers {
         let v2 = 0x1::table::remove<TokenOfferId, 0x1337::token::Token>(v0, v1);
         let v3 = 0x1337::token::get_token_amount(&v2);
         0x1337::token::deposit_token(arg0, v2);
-        let v4 = &mut borrow_global_mut<PendingClaims>(arg1).claim_events;
-        let v5 = TokenClaimEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v4 = TokenClaim{
+                to_address : 0x1::signer::address_of(arg0), 
+                token_id   : arg2, 
+                amount     : v3,
+            };
+            0x1::event::emit<TokenClaim>(v4);
+        };
+        let v5 = &mut borrow_global_mut<PendingClaims>(arg1).claim_events;
+        let v6 = TokenClaimEvent{
             to_address : 0x1::signer::address_of(arg0), 
             token_id   : arg2, 
             amount     : v3,
         };
-        0x1::event::emit_event<TokenClaimEvent>(v4, v5);
+        0x1::event::emit_event<TokenClaimEvent>(v5, v6);
     }
     
     public entry fun claim_script(arg0: signer, arg1: address, arg2: address, arg3: 0x1::string::String, arg4: 0x1::string::String, arg5: u64) acquires PendingClaims {
@@ -104,12 +138,20 @@ module 0x1337::token_transfers {
         } else {
             0x1337::token::merge(0x1::table::borrow_mut<TokenOfferId, 0x1337::token::Token>(v1, v2), v3);
         };
-        let v4 = TokenOfferEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v4 = TokenOffer{
+                to_address : arg1, 
+                token_id   : arg2, 
+                amount     : arg3,
+            };
+            0x1::event::emit<TokenOffer>(v4);
+        };
+        let v5 = TokenOfferEvent{
             to_address : arg1, 
             token_id   : arg2, 
             amount     : arg3,
         };
-        0x1::event::emit_event<TokenOfferEvent>(&mut borrow_global_mut<PendingClaims>(v0).offer_events, v4);
+        0x1::event::emit_event<TokenOfferEvent>(&mut borrow_global_mut<PendingClaims>(v0).offer_events, v5);
     }
     
     public entry fun offer_script(arg0: signer, arg1: address, arg2: address, arg3: 0x1::string::String, arg4: 0x1::string::String, arg5: u64, arg6: u64) acquires PendingClaims {

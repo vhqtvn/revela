@@ -8,20 +8,14 @@ use move_binary_format::{
     access::ModuleAccess,
     binary_views::BinaryIndexedView,
     file_format::{
-        self_module_name, AddressIdentifierIndex, CompiledScript,
-        FunctionDefinition, FunctionHandle, FunctionHandleIndex,
-        IdentifierIndex, ModuleHandle, ModuleHandleIndex, Signature,
-        SignatureIndex, SignatureToken, StructHandleIndex, Visibility,
+        self_module_name, AddressIdentifierIndex, CompiledScript, FunctionDefinition, FunctionHandle, FunctionHandleIndex, IdentifierIndex, ModuleHandle, ModuleHandleIndex, Signature, SignatureIndex, SignatureToken, StructFieldInformation, StructHandleIndex, Visibility
     },
     CompiledModule,
 };
 use move_command_line_common::files::FileHash;
 use move_compiler::{
     expansion::ast::{
-        AbilitySet, Address, Attributes, Function, FunctionBody_,
-        FunctionSignature, ModuleAccess_, ModuleDefinition, ModuleIdent,
-        ModuleIdent_, Program, StructDefinition, StructFields,
-        StructTypeParameter, Type, Type_,
+        AbilitySet, Address, Attributes, Function, FunctionBody_, FunctionSignature, ModuleAccess_, ModuleDefinition, ModuleIdent, ModuleIdent_, Program, StructDefinition, StructLayout, StructTypeParameter, Type, Type_
     },
     parser::ast::{Field, FunctionName, ModuleName, StructName},
     shared::unique_map::UniqueMap,
@@ -116,6 +110,7 @@ fn module_access_for_struct(
         span_(Symbol::from(
             compiled_module.identifier_at(struct_.name).as_str(),
         )),
+        None,
     );
     Ok(span_(access))
 }
@@ -195,6 +190,22 @@ fn map_type(
     }))
 }
 
+fn map_struct_fields(fields: &Vec<move_binary_format::file_format::FieldDefinition>, compiled_module: &CompiledModule, naming: &Naming) -> Result<UniqueMap<Field, (usize, Spanned<Type_>)>, anyhow::Error> {
+    let mut result: UniqueMap<Field, (usize, Type)> = UniqueMap::new();
+    for (idx, field) in fields.iter().enumerate() {
+        let name = Symbol::from(compiled_module.identifier_at(field.name).as_str());
+        let name = Field(span_(name));
+
+        let mapped_type: Type = map_type(compiled_module, &field.signature.0, naming)?;
+        result
+            .add(name, (idx, mapped_type))
+            .map_err(|(name, _)| {
+                anyhow::Error::msg(format!("Error adding field {}", name))
+            })?;
+    }
+    Ok(result)
+}
+
 fn map_struct(
     compiled_module: &move_binary_format::CompiledModule,
     struct_: &move_binary_format::file_format::StructDefinition,
@@ -214,24 +225,25 @@ fn map_struct(
         })
         .collect::<Result<Vec<StructTypeParameter>, anyhow::Error>>()?;
 
-    let fields: StructFields = match &struct_.field_information {
-        move_binary_format::file_format::StructFieldInformation::Native => {
-            StructFields::Native(fake_loc())
+    let layout: StructLayout = match &struct_.field_information {
+        StructFieldInformation::Native => {
+            StructLayout::Native(fake_loc())
         }
-        move_binary_format::file_format::StructFieldInformation::Declared(fields) => {
-            let mut result: UniqueMap<Field, (usize, Type)> = UniqueMap::new();
-            for (idx, field) in fields.iter().enumerate() {
-                let name = Symbol::from(compiled_module.identifier_at(field.name).as_str());
-                let name = Field(span_(name));
-
-                let mapped_type: Type = map_type(compiled_module, &field.signature.0, naming)?;
-                result
-                    .add(name, (idx, mapped_type))
-                    .map_err(|(name, _)| {
-                        anyhow::Error::msg(format!("Error adding field {}", name))
-                    })?;
-            }
-            StructFields::Defined(result)
+        StructFieldInformation::Declared(fields) => {
+            StructLayout::Singleton(map_struct_fields(fields, compiled_module, naming)?, false)
+        }
+        StructFieldInformation::DeclaredVariants(variants) => {
+            let result = variants.iter()
+            .map(|v| {
+                Ok(move_compiler::expansion::ast::StructVariant{
+                    attributes: UniqueMap::new(),
+                    loc: fake_loc(),
+                    name: move_compiler::parser::ast::VariantName(span_(Symbol::from(compiled_module.identifier_at(v.name).as_str()))),
+                    fields: map_struct_fields(&v.fields, compiled_module, naming)?,
+                    is_positional: false,
+                })
+            }).collect::<Result<_, anyhow::Error>>()?;
+            StructLayout::Variants(result)
         }
     };
 
@@ -240,7 +252,7 @@ fn map_struct(
         loc: fake_loc(),
         abilities: map_abilities(struct_handle.abilities)?,
         type_parameters,
-        fields,
+        layout,
     })
 }
 
@@ -381,7 +393,7 @@ pub fn script_into_module(compiled_script: CompiledScript) -> CompiledModule {
             IdentifierIndex::new(script.identifiers.len() as u16)
         });
 
-    // Add a dummy adress if none exists.
+    // Add a dummy address if none exists.
     let dummy_addr = AccountAddress::new([0xFF; AccountAddress::LENGTH]);
     let dummy_addr_idx = script
         .address_identifiers
@@ -461,6 +473,11 @@ pub fn script_into_module(compiled_script: CompiledScript) -> CompiledModule {
 
         struct_defs: vec![],
         function_defs: vec![main_def],
+
+        struct_variant_handles: vec![],
+        struct_variant_instantiations: vec![],
+        variant_field_handles: vec![],
+        variant_field_instantiations: vec![],
     };
 
     move_binary_format::check_bounds::BoundsChecker::verify_module(&module)
@@ -643,11 +660,11 @@ fn create_dummy_for_non_existing_modules(
                             .type_parameters
                             .clone()
                             .unwrap_or_else(|| Vec::new()),
-                        fields: if fields.fields.is_empty() {
-                            StructFields::Native(fake_loc())
+                        layout: if fields.fields.is_empty() {
+                            StructLayout::Native(fake_loc())
                         } else {
-                            StructFields::Defined(
-                                UniqueMap::<Field, (usize, Type)>::maybe_from_iter(
+                            StructLayout::Singleton(
+                                UniqueMap::<Field, (usize, Spanned<Type_>)>::maybe_from_iter(
                                     fields.fields.iter().map(|fname| {
                                         (
                                             Field(span_(Symbol::from(fname.as_str()))),
@@ -656,6 +673,7 @@ fn create_dummy_for_non_existing_modules(
                                     }),
                                 )
                                 .unwrap(),
+                                false,
                             )
                         },
                     },

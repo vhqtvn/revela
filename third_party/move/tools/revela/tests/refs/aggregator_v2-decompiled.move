@@ -19,10 +19,28 @@ module 0x1::aggregator_v2 {
     
     native public fun copy_snapshot<T0: copy + drop>(arg0: &AggregatorSnapshot<T0>) : AggregatorSnapshot<T0>;
     native public fun create_aggregator<T0: copy + drop>(arg0: T0) : Aggregator<T0>;
+    public fun create_aggregator_with_value<T0: copy + drop>(arg0: T0, arg1: T0) : Aggregator<T0> {
+        let v0 = create_aggregator<T0>(arg1);
+        add<T0>(&mut v0, arg0);
+        v0
+    }
+    
     native public fun create_derived_string(arg0: 0x1::string::String) : DerivedStringSnapshot;
     native public fun create_snapshot<T0: copy + drop>(arg0: T0) : AggregatorSnapshot<T0>;
     native public fun create_unbounded_aggregator<T0: copy + drop>() : Aggregator<T0>;
+    public fun create_unbounded_aggregator_with_value<T0: copy + drop>(arg0: T0) : Aggregator<T0> {
+        let v0 = create_unbounded_aggregator<T0>();
+        add<T0>(&mut v0, arg0);
+        v0
+    }
+    
     native public fun derive_string_concat<T0>(arg0: 0x1::string::String, arg1: &AggregatorSnapshot<T0>, arg2: 0x1::string::String) : DerivedStringSnapshot;
+    public fun is_at_least<T0>(arg0: &Aggregator<T0>, arg1: T0) : bool {
+        assert!(0x1::features::aggregator_v2_is_at_least_api_enabled(), 6);
+        is_at_least_impl<T0>(arg0, arg1)
+    }
+    
+    native fun is_at_least_impl<T0>(arg0: &Aggregator<T0>, arg1: T0) : bool;
     public fun max_value<T0: copy + drop>(arg0: &Aggregator<T0>) : T0 {
         arg0.max_value
     }

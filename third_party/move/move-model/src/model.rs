@@ -3383,10 +3383,10 @@ pub struct StructData {
 }
 
 #[derive(Debug)]
-pub(crate) struct StructVariant {
-    pub(crate) loc: Loc,
-    pub(crate) attributes: Vec<Attribute>,
-    pub(crate) order: usize,
+pub struct StructVariant {
+    pub loc: Loc,
+    pub attributes: Vec<Attribute>,
+    pub order: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -3959,7 +3959,7 @@ pub struct FunctionData {
     pub loc: Loc,
 
     /// Location of the function identifier, suitable for error messages alluding to the function.
-    pub(crate) id_loc: Loc,
+    pub id_loc: Loc,
 
     /// The definition index of this function in its bytecode module, if a bytecode module
     /// is attached to the parent module data.
@@ -3974,7 +3974,7 @@ pub struct FunctionData {
 
     /// Whether this function has package visibility before the transformation.
     /// Invariant: when true, visibility is always friend.
-    pub(crate) has_package_visibility: bool,
+    pub has_package_visibility: bool,
 
     /// Whether this is a native function
     pub is_native: bool,

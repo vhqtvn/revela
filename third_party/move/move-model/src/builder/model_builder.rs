@@ -132,7 +132,7 @@ pub struct StructEntry {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum StructLayout {
+pub enum StructLayout {
     /// The second bool is true iff the struct has positional fields
     Singleton(BTreeMap<Symbol, FieldData>, bool),
     Variants(Vec<StructVariant>),
@@ -140,7 +140,7 @@ pub(crate) enum StructLayout {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct StructVariant {
+pub struct StructVariant {
     pub loc: Loc,
     pub name: Symbol,
     pub attributes: Vec<Attribute>,

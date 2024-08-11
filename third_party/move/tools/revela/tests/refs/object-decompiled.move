@@ -40,6 +40,12 @@ module 0x1::object {
         original_owner: address,
     }
     
+    struct Transfer has drop, store {
+        object: address,
+        from: address,
+        to: address,
+    }
+    
     struct TransferEvent has drop, store {
         object: address,
         from: address,
@@ -48,6 +54,10 @@ module 0x1::object {
     
     struct TransferRef has drop, store {
         self: address,
+    }
+    
+    struct Untransferable has key {
+        dummy_field: bool,
     }
     
     public fun create_guid(arg0: &signer) : 0x1::guid::GUID acquires ObjectCore {
@@ -88,12 +98,14 @@ module 0x1::object {
         let v4 = @0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
         let v5 = borrow_global_mut<ObjectCore>(v1);
         if (v5.owner != v4) {
-            let v6 = TransferEvent{
-                object : v1, 
-                from   : v5.owner, 
-                to     : v4,
+            if (0x1::features::module_event_migration_enabled()) {
+                let v6 = Transfer{
+                    object : v1, 
+                    from   : v5.owner, 
+                    to     : v4,
+                };
+                0x1::event::emit<Transfer>(v6);
             };
-            0x1::event::emit<TransferEvent>(v6);
             let v7 = TransferEvent{
                 object : v1, 
                 from   : v5.owner, 
@@ -172,24 +184,36 @@ module 0x1::object {
         create_object_internal(arg0, 0x1::transaction_context::generate_auid_address(), false)
     }
     
+    public(friend) fun create_sticky_object_at_address(arg0: address, arg1: address) : ConstructorRef {
+        create_object_internal(arg0, arg1, false)
+    }
+    
     public(friend) fun create_user_derived_object(arg0: address, arg1: &DeriveRef) : ConstructorRef {
         create_object_internal(arg0, create_user_derived_object_address(arg0, arg1.self), false)
     }
     
     public fun create_user_derived_object_address(arg0: address, arg1: address) : address {
-        let v0 = 0x1::bcs::to_bytes<address>(&arg0);
-        0x1::vector::append<u8>(&mut v0, 0x1::bcs::to_bytes<address>(&arg1));
-        0x1::vector::push_back<u8>(&mut v0, 252);
-        0x1::from_bcs::to_address(0x1::hash::sha3_256(v0))
+        if (0x1::features::object_native_derived_address_enabled()) {
+            create_user_derived_object_address_impl(arg0, arg1)
+        } else {
+            let v1 = 0x1::bcs::to_bytes<address>(&arg0);
+            0x1::vector::append<u8>(&mut v1, 0x1::bcs::to_bytes<address>(&arg1));
+            0x1::vector::push_back<u8>(&mut v1, 252);
+            0x1::from_bcs::to_address(0x1::hash::sha3_256(v1))
+        }
     }
     
-    public fun delete(arg0: DeleteRef) acquires ObjectCore {
+    native fun create_user_derived_object_address_impl(arg0: address, arg1: address) : address;
+    public fun delete(arg0: DeleteRef) acquires ObjectCore, Untransferable {
         let ObjectCore {
             guid_creation_num      : _,
             owner                  : _,
             allow_ungated_transfer : _,
             transfer_events        : v3,
         } = move_from<ObjectCore>(arg0.self);
+        if (exists<Untransferable>(arg0.self)) {
+            let Untransferable {  } = move_from<Untransferable>(arg0.self);
+        };
         0x1::event::destroy_handle<TransferEvent>(v3);
     }
     
@@ -198,6 +222,7 @@ module 0x1::object {
     }
     
     public fun enable_ungated_transfer(arg0: &TransferRef) acquires ObjectCore {
+        assert!(!exists<Untransferable>(arg0.self), 0x1::error::permission_denied(9));
         borrow_global_mut<ObjectCore>(arg0.self).allow_ungated_transfer = true;
     }
     
@@ -216,6 +241,7 @@ module 0x1::object {
     }
     
     public fun generate_linear_transfer_ref(arg0: &TransferRef) : LinearTransferRef acquires ObjectCore {
+        assert!(!exists<Untransferable>(arg0.self), 0x1::error::permission_denied(9));
         let v0 = Object<ObjectCore>{inner: arg0.self};
         let v1 = owner<ObjectCore>(v0);
         LinearTransferRef{
@@ -233,6 +259,7 @@ module 0x1::object {
     }
     
     public fun generate_transfer_ref(arg0: &ConstructorRef) : TransferRef {
+        assert!(!exists<Untransferable>(arg0.self), 0x1::error::permission_denied(9));
         TransferRef{self: arg0.self}
     }
     
@@ -247,6 +274,10 @@ module 0x1::object {
     public fun is_owner<T0: key>(arg0: Object<T0>, arg1: address) : bool acquires ObjectCore {
         let v0 = owner<T0>(arg0);
         v0 == arg1
+    }
+    
+    public fun is_untransferable<T0: key>(arg0: Object<T0>) : bool {
+        exists<Untransferable>(arg0.inner)
     }
     
     public fun object_address<T0: key>(arg0: &Object<T0>) : address {
@@ -277,15 +308,34 @@ module 0x1::object {
         };
         assert!(exists<ObjectCore>(v0), 0x1::error::not_found(2));
         let v1 = borrow_global<ObjectCore>(v0).owner;
+        let v2 = 0;
         while (arg1 != v1) {
-            assert!(0 + 1 < 8, 0x1::error::out_of_range(6));
+            let v3 = v2 + 1;
+            v2 = v3;
+            assert!(v3 < 8, 0x1::error::out_of_range(6));
             if (!exists<ObjectCore>(v1)) {
                 return false
             };
-            let v2 = &borrow_global<ObjectCore>(v1).owner;
-            v1 = *v2;
+            let v4 = &borrow_global<ObjectCore>(v1).owner;
+            v1 = *v4;
         };
         true
+    }
+    
+    public fun root_owner<T0: key>(arg0: Object<T0>) : address acquires ObjectCore {
+        let v0 = owner<T0>(arg0);
+        while (is_object(v0)) {
+            let v1 = address_to_object<ObjectCore>(v0);
+            v0 = owner<ObjectCore>(v1);
+        };
+        v0
+    }
+    
+    public fun set_untransferable(arg0: &ConstructorRef) acquires ObjectCore {
+        borrow_global_mut<ObjectCore>(arg0.self).allow_ungated_transfer = false;
+        let v0 = generate_signer(arg0);
+        let v1 = Untransferable{dummy_field: false};
+        move_to<Untransferable>(&v0, v1);
     }
     
     public entry fun transfer<T0: key>(arg0: &signer, arg1: Object<T0>, arg2: address) acquires ObjectCore {
@@ -300,12 +350,14 @@ module 0x1::object {
         verify_ungated_and_descendant(0x1::signer::address_of(arg0), arg1);
         let v0 = borrow_global_mut<ObjectCore>(arg1);
         if (v0.owner != arg2) {
-            let v1 = TransferEvent{
-                object : arg1, 
-                from   : v0.owner, 
-                to     : arg2,
+            if (0x1::features::module_event_migration_enabled()) {
+                let v1 = Transfer{
+                    object : arg1, 
+                    from   : v0.owner, 
+                    to     : arg2,
+                };
+                0x1::event::emit<Transfer>(v1);
             };
-            0x1::event::emit<TransferEvent>(v1);
             let v2 = TransferEvent{
                 object : arg1, 
                 from   : v0.owner, 
@@ -320,15 +372,21 @@ module 0x1::object {
         transfer<T0>(arg0, arg1, arg2.inner);
     }
     
-    public fun transfer_with_ref(arg0: LinearTransferRef, arg1: address) acquires ObjectCore {
+    public fun transfer_with_ref(arg0: LinearTransferRef, arg1: address) acquires ObjectCore, TombStone {
+        assert!(!exists<Untransferable>(arg0.self), 0x1::error::permission_denied(9));
+        if (exists<TombStone>(arg0.self)) {
+            let TombStone {  } = move_from<TombStone>(arg0.self);
+        };
         let v0 = borrow_global_mut<ObjectCore>(arg0.self);
         assert!(v0.owner == arg0.owner, 0x1::error::permission_denied(4));
-        let v1 = TransferEvent{
-            object : arg0.self, 
-            from   : v0.owner, 
-            to     : arg1,
+        if (0x1::features::module_event_migration_enabled()) {
+            let v1 = Transfer{
+                object : arg0.self, 
+                from   : v0.owner, 
+                to     : arg1,
+            };
+            0x1::event::emit<Transfer>(v1);
         };
-        0x1::event::emit<TransferEvent>(v1);
         let v2 = TransferEvent{
             object : arg0.self, 
             from   : v0.owner, 
@@ -345,12 +403,14 @@ module 0x1::object {
         assert!(v1 == 0x1::signer::address_of(arg0), 0x1::error::permission_denied(4));
         let v2 = borrow_global_mut<ObjectCore>(v0);
         if (v2.owner != v1) {
-            let v3 = TransferEvent{
-                object : v0, 
-                from   : v2.owner, 
-                to     : v1,
+            if (0x1::features::module_event_migration_enabled()) {
+                let v3 = Transfer{
+                    object : v0, 
+                    from   : v2.owner, 
+                    to     : v1,
+                };
+                0x1::event::emit<Transfer>(v3);
             };
-            0x1::event::emit<TransferEvent>(v3);
             let v4 = TransferEvent{
                 object : v0, 
                 from   : v2.owner, 
@@ -371,12 +431,15 @@ module 0x1::object {
         let v0 = borrow_global<ObjectCore>(arg1);
         assert!(v0.allow_ungated_transfer, 0x1::error::permission_denied(3));
         let v1 = v0.owner;
+        let v2 = 0;
         while (arg0 != v1) {
-            assert!(0 + 1 < 8, 0x1::error::out_of_range(6));
+            let v3 = v2 + 1;
+            v2 = v3;
+            assert!(v3 < 8, 0x1::error::out_of_range(6));
             assert!(exists<ObjectCore>(v1), 0x1::error::permission_denied(4));
-            let v2 = borrow_global<ObjectCore>(v1);
-            assert!(v2.allow_ungated_transfer, 0x1::error::permission_denied(3));
-            v1 = v2.owner;
+            let v4 = borrow_global<ObjectCore>(v1);
+            assert!(v4.allow_ungated_transfer, 0x1::error::permission_denied(3));
+            v1 = v4.owner;
         };
     }
     

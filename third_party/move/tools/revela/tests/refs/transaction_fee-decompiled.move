@@ -7,6 +7,10 @@ module 0x1::transaction_fee {
         mint_cap: 0x1::coin::MintCapability<0x1::aptos_coin::AptosCoin>,
     }
     
+    struct AptosFABurnCapabilities has key {
+        burn_ref: 0x1::fungible_asset::BurnRef,
+    }
+    
     struct CollectedFeesPerBlock has key {
         amount: 0x1::coin::AggregatableCoin<0x1::aptos_coin::AptosCoin>,
         proposer: 0x1::option::Option<address>,
@@ -31,14 +35,35 @@ module 0x1::transaction_fee {
         };
     }
     
-    public(friend) fun burn_fee(arg0: address, arg1: u64) acquires AptosCoinCapabilities {
-        let v0 = &borrow_global<AptosCoinCapabilities>(@0x1).burn_cap;
-        0x1::coin::burn_from<0x1::aptos_coin::AptosCoin>(arg0, arg1, v0);
+    public(friend) fun burn_fee(arg0: address, arg1: u64) acquires AptosCoinCapabilities, AptosFABurnCapabilities {
+        if (exists<AptosFABurnCapabilities>(@0x1)) {
+            let v0 = &borrow_global<AptosFABurnCapabilities>(@0x1).burn_ref;
+            0x1::aptos_account::burn_from_fungible_store(v0, arg0, arg1);
+        } else {
+            let v1 = &borrow_global<AptosCoinCapabilities>(@0x1).burn_cap;
+            if (0x1::features::operations_default_to_fa_apt_store_enabled()) {
+                let (v2, v3) = 0x1::coin::get_paired_burn_ref<0x1::aptos_coin::AptosCoin>(v1);
+                let v4 = v2;
+                0x1::aptos_account::burn_from_fungible_store(&v4, arg0, arg1);
+                0x1::coin::return_paired_burn_ref(v4, v3);
+            } else {
+                0x1::coin::burn_from<0x1::aptos_coin::AptosCoin>(arg0, arg1, v1);
+            };
+        };
     }
     
     public(friend) fun collect_fee(arg0: address, arg1: u64) acquires CollectedFeesPerBlock {
         let v0 = &mut borrow_global_mut<CollectedFeesPerBlock>(@0x1).amount;
         0x1::coin::collect_into_aggregatable_coin<0x1::aptos_coin::AptosCoin>(arg0, arg1, v0);
+    }
+    
+    public entry fun convert_to_aptos_fa_burn_ref(arg0: &signer) acquires AptosCoinCapabilities {
+        assert!(0x1::features::operations_default_to_fa_apt_store_enabled(), 5);
+        0x1::system_addresses::assert_aptos_framework(arg0);
+        let AptosCoinCapabilities { burn_cap: v0 } = move_from<AptosCoinCapabilities>(0x1::signer::address_of(arg0));
+        let v1 = 0x1::coin::convert_and_take_paired_burn_ref<0x1::aptos_coin::AptosCoin>(v0);
+        let v2 = AptosFABurnCapabilities{burn_ref: v1};
+        move_to<AptosFABurnCapabilities>(arg0, v2);
     }
     
     fun emit_fee_statement(arg0: FeeStatement) {
@@ -109,8 +134,14 @@ module 0x1::transaction_fee {
     
     public(friend) fun store_aptos_coin_burn_cap(arg0: &signer, arg1: 0x1::coin::BurnCapability<0x1::aptos_coin::AptosCoin>) {
         0x1::system_addresses::assert_aptos_framework(arg0);
-        let v0 = AptosCoinCapabilities{burn_cap: arg1};
-        move_to<AptosCoinCapabilities>(arg0, v0);
+        if (0x1::features::operations_default_to_fa_apt_store_enabled()) {
+            let v0 = 0x1::coin::convert_and_take_paired_burn_ref<0x1::aptos_coin::AptosCoin>(arg1);
+            let v1 = AptosFABurnCapabilities{burn_ref: v0};
+            move_to<AptosFABurnCapabilities>(arg0, v1);
+        } else {
+            let v2 = AptosCoinCapabilities{burn_cap: arg1};
+            move_to<AptosCoinCapabilities>(arg0, v2);
+        };
     }
     
     public(friend) fun store_aptos_coin_mint_cap(arg0: &signer, arg1: 0x1::coin::MintCapability<0x1::aptos_coin::AptosCoin>) {

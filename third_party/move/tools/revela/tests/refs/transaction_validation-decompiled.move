@@ -17,18 +17,23 @@ module 0x1::transaction_validation {
         let v0 = arg4 - arg5;
         assert!((arg3 as u128) * (v0 as u128) <= 18446744073709551615, 0x1::error::out_of_range(6));
         let v1 = arg3 * v0;
-        assert!(0x1::coin::balance<0x1::aptos_coin::AptosCoin>(arg1) >= v1, 0x1::error::out_of_range(1005));
-        let v2 = if (0x1::features::collect_and_distribute_gas_fees()) {
+        if (0x1::features::operations_default_to_fa_apt_store_enabled()) {
+            assert!(0x1::aptos_account::is_fungible_balance_at_least(arg1, v1), 0x1::error::out_of_range(1005));
+        } else {
+            let v2 = 0x1::coin::is_balance_at_least<0x1::aptos_coin::AptosCoin>(arg1, v1);
+            assert!(v2, 0x1::error::out_of_range(1005));
+        };
+        let v3 = if (0x1::features::collect_and_distribute_gas_fees()) {
             0x1::transaction_fee::collect_fee(arg1, v1);
             0
         } else {
             v1
         };
-        if (v2 > arg2) {
-            0x1::transaction_fee::burn_fee(arg1, v2 - arg2);
+        if (v3 > arg2) {
+            0x1::transaction_fee::burn_fee(arg1, v3 - arg2);
         } else {
-            if (v2 < arg2) {
-                0x1::transaction_fee::mint_and_refund(arg1, arg2 - v2);
+            if (v3 < arg2) {
+                0x1::transaction_fee::mint_and_refund(arg1, arg2 - v3);
             };
         };
         0x1::account::increment_sequence_number(0x1::signer::address_of(&arg0));
@@ -52,10 +57,6 @@ module 0x1::transaction_validation {
             user_epilogue_name        : arg4,
         };
         move_to<TransactionValidation>(arg0, v0);
-    }
-    
-    fun module_prologue(arg0: signer, arg1: u64, arg2: vector<u8>, arg3: u64, arg4: u64, arg5: u64, arg6: u8) {
-        prologue_common(arg0, 0x1::signer::address_of(&arg0), arg1, arg2, arg3, arg4, arg5, arg6);
     }
     
     fun multi_agent_common_prologue(arg0: vector<address>, arg1: vector<vector<u8>>) {
@@ -91,8 +92,12 @@ module 0x1::transaction_validation {
             assert!(arg2 == 0, 0x1::error::invalid_argument(1003));
             assert!(arg3 == 0x1::bcs::to_bytes<address>(&v0), 0x1::error::invalid_argument(1001));
         };
-        assert!(0x1::coin::is_account_registered<0x1::aptos_coin::AptosCoin>(arg1), 0x1::error::invalid_argument(1005));
-        assert!(0x1::coin::balance<0x1::aptos_coin::AptosCoin>(arg1) >= arg4 * arg5, 0x1::error::invalid_argument(1005));
+        let v2 = arg4 * arg5;
+        if (0x1::features::operations_default_to_fa_apt_store_enabled()) {
+            assert!(0x1::aptos_account::is_fungible_balance_at_least(arg1, v2), 0x1::error::invalid_argument(1005));
+        } else {
+            assert!(0x1::coin::is_balance_at_least<0x1::aptos_coin::AptosCoin>(arg1, v2), 0x1::error::invalid_argument(1005));
+        };
     }
     
     fun script_prologue(arg0: signer, arg1: u64, arg2: vector<u8>, arg3: u64, arg4: u64, arg5: u64, arg6: u8, arg7: vector<u8>) {

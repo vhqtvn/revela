@@ -39,7 +39,6 @@ module 0x1::aptos_coin {
     
     public(friend) fun configure_accounts_for_test(arg0: &signer, arg1: &signer, arg2: 0x1::coin::MintCapability<AptosCoin>) {
         0x1::system_addresses::assert_aptos_framework(arg0);
-        0x1::coin::register<AptosCoin>(arg1);
         let v0 = 0x1::coin::mint<AptosCoin>(18446744073709551615, &arg2);
         0x1::coin::deposit<AptosCoin>(0x1::signer::address_of(arg1), v0);
         let v1 = MintCapStore{mint_cap: arg2};

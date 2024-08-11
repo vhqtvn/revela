@@ -210,7 +210,7 @@ impl OperationEvaluator for &Operation {
                 expr: ExprNodeOperation::ReadRef(only_one(args, "read_ref")?).to_expr(),
             }),
 
-            Operation::FreezeRef => Ok(OperationEvaluatorResult {
+            Operation::FreezeRef(_) => Ok(OperationEvaluatorResult {
                 cannot_keep: false,
                 expr: ExprNodeOperation::FreezeRef(only_one(args, "freeze_ref")?).to_expr(),
             }),
@@ -292,6 +292,10 @@ impl OperationEvaluator for &Operation {
             | Operation::Havoc(..) => {
                 Err(anyhow::anyhow!("Specifications opcode is not supported"))
             }
+            Operation::TestVariant(_, _, _, _) => todo!(),
+            Operation::PackVariant(_, _, _, _) => todo!(),
+            Operation::UnpackVariant(_, _, _, _) => todo!(),
+            Operation::BorrowVariantField(_, _, _, _, _) => todo!(),
         }
     }
 }

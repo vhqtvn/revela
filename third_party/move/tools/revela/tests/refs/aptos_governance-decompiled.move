@@ -3,6 +3,14 @@ module 0x1::aptos_governance {
         hashes: 0x1::simple_map::SimpleMap<u64, vector<u8>>,
     }
     
+    struct CreateProposal has drop, store {
+        proposer: address,
+        stake_pool: address,
+        proposal_id: u64,
+        execution_hash: vector<u8>,
+        proposal_metadata: 0x1::simple_map::SimpleMap<0x1::string::String, vector<u8>>,
+    }
+    
     struct CreateProposalEvent has drop, store {
         proposer: address,
         stake_pool: address,
@@ -32,10 +40,24 @@ module 0x1::aptos_governance {
         proposal_id: u64,
     }
     
+    struct UpdateConfig has drop, store {
+        min_voting_threshold: u128,
+        required_proposer_stake: u64,
+        voting_duration_secs: u64,
+    }
+    
     struct UpdateConfigEvent has drop, store {
         min_voting_threshold: u128,
         required_proposer_stake: u64,
         voting_duration_secs: u64,
+    }
+    
+    struct Vote has drop, store {
+        proposal_id: u64,
+        voter: address,
+        stake_pool: address,
+        num_votes: u64,
+        should_pass: bool,
     }
     
     struct VoteEvent has drop, store {
@@ -56,11 +78,6 @@ module 0x1::aptos_governance {
     
     public entry fun create_proposal(arg0: &signer, arg1: address, arg2: vector<u8>, arg3: vector<u8>, arg4: vector<u8>) acquires GovernanceConfig, GovernanceEvents {
         create_proposal_v2(arg0, arg1, arg2, arg3, arg4, false);
-    }
-    
-    public fun reconfigure(arg0: &signer) {
-        0x1::system_addresses::assert_aptos_framework(arg0);
-        0x1::reconfiguration::reconfigure();
     }
     
     public entry fun create_proposal_v2(arg0: &signer, arg1: address, arg2: vector<u8>, arg3: vector<u8>, arg4: vector<u8>, arg5: bool) acquires GovernanceConfig, GovernanceEvents {
@@ -99,6 +116,30 @@ module 0x1::aptos_governance {
         };
     }
     
+    public entry fun batch_partial_vote(arg0: &signer, arg1: vector<address>, arg2: u64, arg3: u64, arg4: bool) acquires ApprovedExecutionHashes, GovernanceEvents, VotingRecords, VotingRecordsV2 {
+        let v0 = arg1;
+        0x1::vector::reverse<address>(&mut v0);
+        let v1 = v0;
+        let v2 = 0x1::vector::length<address>(&v1);
+        while (v2 > 0) {
+            vote_internal(arg0, 0x1::vector::pop_back<address>(&mut v1), arg2, arg3, arg4);
+            v2 = v2 - 1;
+        };
+        0x1::vector::destroy_empty<address>(v1);
+    }
+    
+    public entry fun batch_vote(arg0: &signer, arg1: vector<address>, arg2: u64, arg3: bool) acquires ApprovedExecutionHashes, GovernanceEvents, VotingRecords, VotingRecordsV2 {
+        let v0 = arg1;
+        0x1::vector::reverse<address>(&mut v0);
+        let v1 = v0;
+        let v2 = 0x1::vector::length<address>(&v1);
+        while (v2 > 0) {
+            vote_internal(arg0, 0x1::vector::pop_back<address>(&mut v1), arg2, 18446744073709551615, arg3);
+            v2 = v2 - 1;
+        };
+        0x1::vector::destroy_empty<address>(v1);
+    }
+    
     fun create_proposal_metadata(arg0: vector<u8>, arg1: vector<u8>) : 0x1::simple_map::SimpleMap<0x1::string::String, vector<u8>> {
         let v0 = 0x1::string::utf8(arg0);
         assert!(0x1::string::length(&v0) <= 256, 0x1::error::invalid_argument(9));
@@ -128,15 +169,36 @@ module 0x1::aptos_governance {
         let v6 = 0x1::governance_proposal::create_proposal();
         let v7 = v1.min_voting_threshold;
         let v8 = 0x1::voting::create_proposal_v2<0x1::governance_proposal::GovernanceProposal>(v0, @0x1, v6, arg2, v7, v2, v5, v3, arg5);
-        let v9 = CreateProposalEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v9 = CreateProposal{
+                proposer          : v0, 
+                stake_pool        : arg1, 
+                proposal_id       : v8, 
+                execution_hash    : arg2, 
+                proposal_metadata : v3,
+            };
+            0x1::event::emit<CreateProposal>(v9);
+        };
+        let v10 = CreateProposalEvent{
             proposer          : v0, 
             stake_pool        : arg1, 
             proposal_id       : v8, 
             execution_hash    : arg2, 
             proposal_metadata : v3,
         };
-        0x1::event::emit_event<CreateProposalEvent>(&mut borrow_global_mut<GovernanceEvents>(@0x1).create_proposal_events, v9);
+        0x1::event::emit_event<CreateProposalEvent>(&mut borrow_global_mut<GovernanceEvents>(@0x1).create_proposal_events, v10);
         v8
+    }
+    
+    public entry fun force_end_epoch(arg0: &signer) {
+        0x1::system_addresses::assert_aptos_framework(arg0);
+        0x1::reconfiguration_with_dkg::finish(arg0);
+    }
+    
+    public entry fun force_end_epoch_test_only(arg0: &signer) acquires GovernanceResponsbility {
+        let v0 = get_signer_testnet_only(arg0, @0x1);
+        0x1::system_addresses::assert_aptos_framework(&v0);
+        0x1::reconfiguration_with_dkg::finish(&v0);
     }
     
     public fun get_min_voting_threshold() : u128 acquires GovernanceConfig {
@@ -237,6 +299,15 @@ module 0x1::aptos_governance {
         vote_internal(arg0, arg1, arg2, arg3, arg4);
     }
     
+    public entry fun reconfigure(arg0: &signer) {
+        0x1::system_addresses::assert_aptos_framework(arg0);
+        if (0x1::consensus_config::validator_txn_enabled() && 0x1::randomness_config::enabled()) {
+            0x1::reconfiguration_with_dkg::try_start();
+        } else {
+            0x1::reconfiguration_with_dkg::finish(arg0);
+        };
+    }
+    
     public fun remove_approved_hash(arg0: u64) acquires ApprovedExecutionHashes {
         let v0 = 0x1::voting::is_resolved<0x1::governance_proposal::GovernanceProposal>(@0x1, arg0);
         assert!(v0, 0x1::error::invalid_argument(8));
@@ -270,8 +341,8 @@ module 0x1::aptos_governance {
     
     public fun toggle_features(arg0: &signer, arg1: vector<u64>, arg2: vector<u64>) {
         0x1::system_addresses::assert_aptos_framework(arg0);
-        0x1::features::change_feature_flags(arg0, arg1, arg2);
-        0x1::reconfiguration::reconfigure();
+        0x1::features::change_feature_flags_for_next_epoch(arg0, arg1, arg2);
+        reconfigure(arg0);
     }
     
     public fun update_governance_config(arg0: &signer, arg1: u128, arg2: u64, arg3: u64) acquires GovernanceConfig, GovernanceEvents {
@@ -280,13 +351,21 @@ module 0x1::aptos_governance {
         v0.voting_duration_secs = arg3;
         v0.min_voting_threshold = arg1;
         v0.required_proposer_stake = arg2;
-        let v1 = &mut borrow_global_mut<GovernanceEvents>(@0x1).update_config_events;
-        let v2 = UpdateConfigEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v1 = UpdateConfig{
+                min_voting_threshold    : arg1, 
+                required_proposer_stake : arg2, 
+                voting_duration_secs    : arg3,
+            };
+            0x1::event::emit<UpdateConfig>(v1);
+        };
+        let v2 = &mut borrow_global_mut<GovernanceEvents>(@0x1).update_config_events;
+        let v3 = UpdateConfigEvent{
             min_voting_threshold    : arg1, 
             required_proposer_stake : arg2, 
             voting_duration_secs    : arg3,
         };
-        0x1::event::emit_event<UpdateConfigEvent>(v1, v2);
+        0x1::event::emit_event<UpdateConfigEvent>(v2, v3);
     }
     
     fun vote_internal(arg0: &signer, arg1: address, arg2: u64, arg3: u64, arg4: bool) acquires ApprovedExecutionHashes, GovernanceEvents, VotingRecords, VotingRecordsV2 {
@@ -312,14 +391,24 @@ module 0x1::aptos_governance {
             assert!(!0x1::table::contains<RecordKey, bool>(&v8.votes, v5), 0x1::error::invalid_argument(4));
             0x1::table::add<RecordKey, bool>(&mut v8.votes, v5, true);
         };
-        let v9 = VoteEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v9 = Vote{
+                proposal_id : arg2, 
+                voter       : v0, 
+                stake_pool  : arg1, 
+                num_votes   : v3, 
+                should_pass : arg4,
+            };
+            0x1::event::emit<Vote>(v9);
+        };
+        let v10 = VoteEvent{
             proposal_id : arg2, 
             voter       : v0, 
             stake_pool  : arg1, 
             num_votes   : v3, 
             should_pass : arg4,
         };
-        0x1::event::emit_event<VoteEvent>(&mut borrow_global_mut<GovernanceEvents>(@0x1).vote_events, v9);
+        0x1::event::emit_event<VoteEvent>(&mut borrow_global_mut<GovernanceEvents>(@0x1).vote_events, v10);
         if (0x1::voting::get_proposal_state<0x1::governance_proposal::GovernanceProposal>(@0x1, arg2) == 1) {
             add_approved_script_hash(arg2);
         };

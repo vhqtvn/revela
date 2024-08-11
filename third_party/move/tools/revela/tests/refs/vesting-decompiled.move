@@ -5,10 +5,26 @@ module 0x1::vesting {
         create_events: 0x1::event::EventHandle<CreateVestingContractEvent>,
     }
     
+    struct AdminWithdraw has drop, store {
+        admin: address,
+        vesting_contract_address: address,
+        amount: u64,
+    }
+    
     struct AdminWithdrawEvent has drop, store {
         admin: address,
         vesting_contract_address: address,
         amount: u64,
+    }
+    
+    struct CreateVestingContract has drop, store {
+        operator: address,
+        voter: address,
+        grant_amount: u64,
+        withdrawal_address: address,
+        vesting_contract_address: address,
+        staking_pool_address: address,
+        commission_percentage: u64,
     }
     
     struct CreateVestingContractEvent has drop, store {
@@ -21,10 +37,23 @@ module 0x1::vesting {
         commission_percentage: u64,
     }
     
+    struct Distribute has drop, store {
+        admin: address,
+        vesting_contract_address: address,
+        amount: u64,
+    }
+    
     struct DistributeEvent has drop, store {
         admin: address,
         vesting_contract_address: address,
         amount: u64,
+    }
+    
+    struct ResetLockup has drop, store {
+        admin: address,
+        vesting_contract_address: address,
+        staking_pool_address: address,
+        new_lockup_expiration_secs: u64,
     }
     
     struct ResetLockupEvent has drop, store {
@@ -32,6 +61,14 @@ module 0x1::vesting {
         vesting_contract_address: address,
         staking_pool_address: address,
         new_lockup_expiration_secs: u64,
+    }
+    
+    struct SetBeneficiary has drop, store {
+        admin: address,
+        vesting_contract_address: address,
+        shareholder: address,
+        old_beneficiary: address,
+        new_beneficiary: address,
     }
     
     struct SetBeneficiaryEvent has drop, store {
@@ -49,9 +86,21 @@ module 0x1::vesting {
         commission_percentage: u64,
     }
     
+    struct Terminate has drop, store {
+        admin: address,
+        vesting_contract_address: address,
+    }
+    
     struct TerminateEvent has drop, store {
         admin: address,
         vesting_contract_address: address,
+    }
+    
+    struct UnlockRewards has drop, store {
+        admin: address,
+        vesting_contract_address: address,
+        staking_pool_address: address,
+        amount: u64,
     }
     
     struct UnlockRewardsEvent has drop, store {
@@ -59,6 +108,15 @@ module 0x1::vesting {
         vesting_contract_address: address,
         staking_pool_address: address,
         amount: u64,
+    }
+    
+    struct UpdateOperator has drop, store {
+        admin: address,
+        vesting_contract_address: address,
+        staking_pool_address: address,
+        old_operator: address,
+        new_operator: address,
+        commission_percentage: u64,
     }
     
     struct UpdateOperatorEvent has drop, store {
@@ -70,12 +128,28 @@ module 0x1::vesting {
         commission_percentage: u64,
     }
     
+    struct UpdateVoter has drop, store {
+        admin: address,
+        vesting_contract_address: address,
+        staking_pool_address: address,
+        old_voter: address,
+        new_voter: address,
+    }
+    
     struct UpdateVoterEvent has drop, store {
         admin: address,
         vesting_contract_address: address,
         staking_pool_address: address,
         old_voter: address,
         new_voter: address,
+    }
+    
+    struct Vest has drop, store {
+        admin: address,
+        vesting_contract_address: address,
+        staking_pool_address: address,
+        period_vested: u64,
+        amount: u64,
     }
     
     struct VestEvent has drop, store {
@@ -148,12 +222,20 @@ module 0x1::vesting {
         } else {
             0x1::coin::destroy_zero<0x1::aptos_coin::AptosCoin>(v1);
         };
-        let v10 = DistributeEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v10 = Distribute{
+                admin                    : v0.admin, 
+                vesting_contract_address : arg0, 
+                amount                   : v2,
+            };
+            0x1::event::emit<Distribute>(v10);
+        };
+        let v11 = DistributeEvent{
             admin                    : v0.admin, 
             vesting_contract_address : arg0, 
             amount                   : v2,
         };
-        0x1::event::emit_event<DistributeEvent>(&mut v0.distribute_events, v10);
+        0x1::event::emit_event<DistributeEvent>(&mut v0.distribute_events, v11);
     }
     
     public entry fun reset_lockup(arg0: &signer, arg1: address) acquires VestingContract {
@@ -161,16 +243,27 @@ module 0x1::vesting {
         verify_admin(arg0, v0);
         let v1 = get_vesting_account_signer_internal(v0);
         0x1::staking_contract::reset_lockup(&v1, v0.staking.operator);
-        let v2 = v0.admin;
-        let v3 = v0.staking.pool_address;
-        let v4 = 0x1::stake::get_lockup_secs(v0.staking.pool_address);
-        let v5 = ResetLockupEvent{
-            admin                      : v2, 
-            vesting_contract_address   : arg1, 
-            staking_pool_address       : v3, 
-            new_lockup_expiration_secs : v4,
+        if (0x1::features::module_event_migration_enabled()) {
+            let v2 = v0.staking.pool_address;
+            let v3 = 0x1::stake::get_lockup_secs(v0.staking.pool_address);
+            let v4 = ResetLockup{
+                admin                      : v0.admin, 
+                vesting_contract_address   : arg1, 
+                staking_pool_address       : v2, 
+                new_lockup_expiration_secs : v3,
+            };
+            0x1::event::emit<ResetLockup>(v4);
         };
-        0x1::event::emit_event<ResetLockupEvent>(&mut v0.reset_lockup_events, v5);
+        let v5 = v0.admin;
+        let v6 = v0.staking.pool_address;
+        let v7 = 0x1::stake::get_lockup_secs(v0.staking.pool_address);
+        let v8 = ResetLockupEvent{
+            admin                      : v5, 
+            vesting_contract_address   : arg1, 
+            staking_pool_address       : v6, 
+            new_lockup_expiration_secs : v7,
+        };
+        0x1::event::emit_event<ResetLockupEvent>(&mut v0.reset_lockup_events, v8);
     }
     
     public entry fun set_beneficiary_for_operator(arg0: &signer, arg1: address) {
@@ -189,16 +282,27 @@ module 0x1::vesting {
         let v2 = v0.staking.voter;
         0x1::staking_contract::update_voter(&v1, v0.staking.operator, arg2);
         v0.staking.voter = arg2;
-        let v3 = v0.admin;
-        let v4 = v0.staking.pool_address;
-        let v5 = UpdateVoterEvent{
-            admin                    : v3, 
+        if (0x1::features::module_event_migration_enabled()) {
+            let v3 = v0.staking.pool_address;
+            let v4 = UpdateVoter{
+                admin                    : v0.admin, 
+                vesting_contract_address : arg1, 
+                staking_pool_address     : v3, 
+                old_voter                : v2, 
+                new_voter                : arg2,
+            };
+            0x1::event::emit<UpdateVoter>(v4);
+        };
+        let v5 = v0.admin;
+        let v6 = v0.staking.pool_address;
+        let v7 = UpdateVoterEvent{
+            admin                    : v5, 
             vesting_contract_address : arg1, 
-            staking_pool_address     : v4, 
+            staking_pool_address     : v6, 
             old_voter                : v2, 
             new_voter                : arg2,
         };
-        0x1::event::emit_event<UpdateVoterEvent>(&mut v0.update_voter_events, v5);
+        0x1::event::emit_event<UpdateVoterEvent>(&mut v0.update_voter_events, v7);
     }
     
     public fun accumulated_rewards(arg0: address, arg1: address) : u64 acquires VestingContract {
@@ -221,12 +325,20 @@ module 0x1::vesting {
             return
         };
         0x1::aptos_account::deposit_coins<0x1::aptos_coin::AptosCoin>(v0.withdrawal_address, v1);
-        let v3 = AdminWithdrawEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v3 = AdminWithdraw{
+                admin                    : v0.admin, 
+                vesting_contract_address : arg1, 
+                amount                   : v2,
+            };
+            0x1::event::emit<AdminWithdraw>(v3);
+        };
+        let v4 = AdminWithdrawEvent{
             admin                    : v0.admin, 
             vesting_contract_address : arg1, 
             amount                   : v2,
         };
-        0x1::event::emit_event<AdminWithdrawEvent>(&mut v0.admin_withdraw_events, v3);
+        0x1::event::emit_event<AdminWithdrawEvent>(&mut v0.admin_withdraw_events, v4);
     }
     
     fun assert_active_vesting_contract(arg0: address) acquires VestingContract {
@@ -278,7 +390,19 @@ module 0x1::vesting {
         let v15 = 0x1::signer::address_of(&v13);
         let v16 = borrow_global_mut<AdminStore>(v9);
         0x1::vector::push_back<address>(&mut v16.vesting_contracts, v15);
-        let v17 = CreateVestingContractEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v17 = CreateVestingContract{
+                operator                 : arg5, 
+                voter                    : arg6, 
+                grant_amount             : v1, 
+                withdrawal_address       : arg4, 
+                vesting_contract_address : v15, 
+                staking_pool_address     : v14, 
+                commission_percentage    : arg7,
+            };
+            0x1::event::emit<CreateVestingContract>(v17);
+        };
+        let v18 = CreateVestingContractEvent{
             operator                 : arg5, 
             voter                    : arg6, 
             grant_amount             : v1, 
@@ -287,44 +411,44 @@ module 0x1::vesting {
             staking_pool_address     : v14, 
             commission_percentage    : arg7,
         };
-        0x1::event::emit_event<CreateVestingContractEvent>(&mut v16.create_events, v17);
-        let v18 = 0x1::simple_map::create<address, address>();
-        let v19 = StakingInfo{
+        0x1::event::emit_event<CreateVestingContractEvent>(&mut v16.create_events, v18);
+        let v19 = 0x1::simple_map::create<address, address>();
+        let v20 = StakingInfo{
             pool_address          : v14, 
             operator              : arg5, 
             voter                 : arg6, 
             commission_percentage : arg7,
         };
-        let v20 = 0x1::account::new_event_handle<UpdateOperatorEvent>(&v13);
-        let v21 = 0x1::account::new_event_handle<UpdateVoterEvent>(&v13);
-        let v22 = 0x1::account::new_event_handle<ResetLockupEvent>(&v13);
-        let v23 = 0x1::account::new_event_handle<SetBeneficiaryEvent>(&v13);
-        let v24 = 0x1::account::new_event_handle<UnlockRewardsEvent>(&v13);
-        let v25 = 0x1::account::new_event_handle<VestEvent>(&v13);
-        let v26 = 0x1::account::new_event_handle<DistributeEvent>(&v13);
-        let v27 = 0x1::account::new_event_handle<TerminateEvent>(&v13);
-        let v28 = 0x1::account::new_event_handle<AdminWithdrawEvent>(&v13);
-        let v29 = VestingContract{
+        let v21 = 0x1::account::new_event_handle<UpdateOperatorEvent>(&v13);
+        let v22 = 0x1::account::new_event_handle<UpdateVoterEvent>(&v13);
+        let v23 = 0x1::account::new_event_handle<ResetLockupEvent>(&v13);
+        let v24 = 0x1::account::new_event_handle<SetBeneficiaryEvent>(&v13);
+        let v25 = 0x1::account::new_event_handle<UnlockRewardsEvent>(&v13);
+        let v26 = 0x1::account::new_event_handle<VestEvent>(&v13);
+        let v27 = 0x1::account::new_event_handle<DistributeEvent>(&v13);
+        let v28 = 0x1::account::new_event_handle<TerminateEvent>(&v13);
+        let v29 = 0x1::account::new_event_handle<AdminWithdrawEvent>(&v13);
+        let v30 = VestingContract{
             state                  : 1, 
             admin                  : v9, 
             grant_pool             : v2, 
-            beneficiaries          : v18, 
+            beneficiaries          : v19, 
             vesting_schedule       : arg3, 
             withdrawal_address     : arg4, 
-            staking                : v19, 
+            staking                : v20, 
             remaining_grant        : v1, 
             signer_cap             : v12, 
-            update_operator_events : v20, 
-            update_voter_events    : v21, 
-            reset_lockup_events    : v22, 
-            set_beneficiary_events : v23, 
-            unlock_rewards_events  : v24, 
-            vest_events            : v25, 
-            distribute_events      : v26, 
-            terminate_events       : v27, 
-            admin_withdraw_events  : v28,
+            update_operator_events : v21, 
+            update_voter_events    : v22, 
+            reset_lockup_events    : v23, 
+            set_beneficiary_events : v24, 
+            unlock_rewards_events  : v25, 
+            vest_events            : v26, 
+            distribute_events      : v27, 
+            terminate_events       : v28, 
+            admin_withdraw_events  : v29,
         };
-        move_to<VestingContract>(&v13, v29);
+        move_to<VestingContract>(&v13, v30);
         0x1::simple_map::destroy_empty<address, 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>>(arg2);
         v15
     }
@@ -440,12 +564,21 @@ module 0x1::vesting {
         } else {
             0x1::simple_map::add<address, address>(v2, arg2, arg3);
         };
-        let v3 = v0.admin;
-        let v4 = arg2;
+        if (0x1::features::module_event_migration_enabled()) {
+            let v3 = SetBeneficiary{
+                admin                    : v0.admin, 
+                vesting_contract_address : arg1, 
+                shareholder              : arg2, 
+                old_beneficiary          : v1, 
+                new_beneficiary          : arg3,
+            };
+            0x1::event::emit<SetBeneficiary>(v3);
+        };
+        let v4 = v0.admin;
         let v5 = SetBeneficiaryEvent{
-            admin                    : v3, 
+            admin                    : v4, 
             vesting_contract_address : arg1, 
-            shareholder              : v4, 
+            shareholder              : arg2, 
             old_beneficiary          : v1, 
             new_beneficiary          : arg3,
         };
@@ -512,11 +645,18 @@ module 0x1::vesting {
         v0.state = 2;
         v0.remaining_grant = 0;
         unlock_stake(v0, v1);
-        let v5 = TerminateEvent{
+        if (0x1::features::module_event_migration_enabled()) {
+            let v5 = Terminate{
+                admin                    : v0.admin, 
+                vesting_contract_address : arg1,
+            };
+            0x1::event::emit<Terminate>(v5);
+        };
+        let v6 = TerminateEvent{
             admin                    : v0.admin, 
             vesting_contract_address : arg1,
         };
-        0x1::event::emit_event<TerminateEvent>(&mut v0.terminate_events, v5);
+        0x1::event::emit_event<TerminateEvent>(&mut v0.terminate_events, v6);
     }
     
     public fun total_accumulated_rewards(arg0: address) : u64 acquires VestingContract {
@@ -558,17 +698,29 @@ module 0x1::vesting {
         0x1::staking_contract::switch_operator(&v1, v2, arg2, arg3);
         v0.staking.operator = arg2;
         v0.staking.commission_percentage = arg3;
-        let v3 = v0.admin;
-        let v4 = v0.staking.pool_address;
-        let v5 = UpdateOperatorEvent{
-            admin                    : v3, 
+        if (0x1::features::module_event_migration_enabled()) {
+            let v3 = v0.staking.pool_address;
+            let v4 = UpdateOperator{
+                admin                    : v0.admin, 
+                vesting_contract_address : arg1, 
+                staking_pool_address     : v3, 
+                old_operator             : v2, 
+                new_operator             : arg2, 
+                commission_percentage    : arg3,
+            };
+            0x1::event::emit<UpdateOperator>(v4);
+        };
+        let v5 = v0.admin;
+        let v6 = v0.staking.pool_address;
+        let v7 = UpdateOperatorEvent{
+            admin                    : v5, 
             vesting_contract_address : arg1, 
-            staking_pool_address     : v4, 
+            staking_pool_address     : v6, 
             old_operator             : v2, 
             new_operator             : arg2, 
             commission_percentage    : arg3,
         };
-        0x1::event::emit_event<UpdateOperatorEvent>(&mut v0.update_operator_events, v5);
+        0x1::event::emit_event<UpdateOperatorEvent>(&mut v0.update_operator_events, v7);
     }
     
     public entry fun update_operator_with_same_commission(arg0: &signer, arg1: address, arg2: address) acquires VestingContract {
@@ -603,16 +755,27 @@ module 0x1::vesting {
         v0.remaining_grant = v0.remaining_grant - v7;
         v1.last_vested_period = v2;
         unlock_stake(v0, v7);
-        let v8 = v0.admin;
-        let v9 = v0.staking.pool_address;
-        let v10 = VestEvent{
-            admin                    : v8, 
+        if (0x1::features::module_event_migration_enabled()) {
+            let v8 = v0.staking.pool_address;
+            let v9 = Vest{
+                admin                    : v0.admin, 
+                vesting_contract_address : arg0, 
+                staking_pool_address     : v8, 
+                period_vested            : v2, 
+                amount                   : v7,
+            };
+            0x1::event::emit<Vest>(v9);
+        };
+        let v10 = v0.admin;
+        let v11 = v0.staking.pool_address;
+        let v12 = VestEvent{
+            admin                    : v10, 
             vesting_contract_address : arg0, 
-            staking_pool_address     : v9, 
+            staking_pool_address     : v11, 
             period_vested            : v2, 
             amount                   : v7,
         };
-        0x1::event::emit_event<VestEvent>(&mut v0.vest_events, v10);
+        0x1::event::emit_event<VestEvent>(&mut v0.vest_events, v12);
     }
     
     public entry fun vest_many(arg0: vector<address>) acquires VestingContract {

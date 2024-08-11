@@ -23,6 +23,8 @@ fn default_testing_addresses() -> BTreeMap<String, NumericalAddress> {
         ("source_addr", "0x2345"),
         ("core_resources", "0x3000"),
         ("vm_reserved", "0x3001"),
+        ("aptos_fungible_asset", "0xA"),
+        ("vm", "0x0"),
     ];
     mapping
         .iter()
