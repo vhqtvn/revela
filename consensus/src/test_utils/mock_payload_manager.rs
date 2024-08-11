@@ -58,17 +58,22 @@ impl PayloadClient for MockPayloadManager {
         &self,
         _max_poll_time: Duration,
         _max_size: u64,
+        _max_size_after_filtering: u64,
+        _soft_max_size_after_filtering: u64,
         _max_bytes: u64,
+        _max_inline_size: u64,
+        _max_inline_bytes: u64,
         _validator_txn_filter: vtxn_pool::TransactionFilter,
         _user_txn_filter: PayloadFilter,
         _wait_callback: BoxFuture<'static, ()>,
         _pending_ordering: bool,
         _pending_uncommitted_blocks: usize,
         _recent_fill_fraction: f32,
+        _block_timestamp: Duration,
     ) -> Result<(Vec<ValidatorTransaction>, Payload), QuorumStoreError> {
         // generate 1k txn is too slow with coverage instrumentation
         Ok((
-            vec![ValidatorTransaction::dummy1(vec![0xFF; 1024])],
+            vec![ValidatorTransaction::dummy(vec![0xFF; 1])],
             random_payload(10),
         ))
     }

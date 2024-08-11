@@ -10,6 +10,8 @@ use prometheus::{register_int_counter_vec, IntCounterVec};
 pub enum IndexerGrpcStep {
     // [Data Service] New request received.
     DataServiceNewRequestReceived,
+    // [Data Service] Fetching data from in-memory cache.
+    DataServiceFetchingDataFromInMemoryCache,
     // [Data Service] Waiting for data from cache.
     DataServiceWaitingForCacheData,
     // [Data Service] Fetched data from Redis cache.
@@ -56,6 +58,8 @@ pub enum IndexerGrpcStep {
     TableInfoProcessedBatch,
     // [Indexer Table Info] Processed transactions from fullnode
     TableInfoProcessed,
+    // [Indexer Indices] Processed transactions from AptosDB
+    InternalIndexerDBProcessed,
 }
 
 impl IndexerGrpcStep {
@@ -63,6 +67,7 @@ impl IndexerGrpcStep {
         match self {
             // Data service steps
             IndexerGrpcStep::DataServiceNewRequestReceived => "1",
+            IndexerGrpcStep::DataServiceFetchingDataFromInMemoryCache => "2.0.0",
             IndexerGrpcStep::DataServiceWaitingForCacheData => "2.0",
             IndexerGrpcStep::DataServiceDataFetchedCache => "2.1",
             IndexerGrpcStep::DataServiceDataFetchedFilestore => "2.2",
@@ -88,6 +93,7 @@ impl IndexerGrpcStep {
             // Table info service steps
             IndexerGrpcStep::TableInfoProcessedBatch => "1",
             IndexerGrpcStep::TableInfoProcessed => "2",
+            IndexerGrpcStep::InternalIndexerDBProcessed => "1",
         }
     }
 
@@ -96,6 +102,9 @@ impl IndexerGrpcStep {
             // Data service steps
             IndexerGrpcStep::DataServiceNewRequestReceived => {
                 "[Data Service] New request received."
+            }
+            IndexerGrpcStep::DataServiceFetchingDataFromInMemoryCache => {
+                "[Data Service] Fetching data from in-memory cache."
             }
             IndexerGrpcStep::DataServiceWaitingForCacheData => {
                 "[Data Service] Waiting for data from cache."
@@ -130,6 +139,9 @@ impl IndexerGrpcStep {
             IndexerGrpcStep::TableInfoProcessed => {
                 "[Indexer Table Info] Processed successfully"
             }
+            IndexerGrpcStep::InternalIndexerDBProcessed => {
+                "[Indexer DB indices] Processed successfully"
+            }
         }
     }
 }
@@ -160,6 +172,26 @@ pub static NUM_TRANSACTIONS_COUNT: Lazy<IntCounterVec> = Lazy::new(|| {
         "indexer_grpc_num_transactions_count_v2",
         "Total count of transactions at this step",
         &["service_type", "step", "message"],
+    )
+    .unwrap()
+});
+
+/// Number of versions that were overlapped in a multi-task fetch pull
+pub static NUM_MULTI_FETCH_OVERLAPPED_VERSIONS: Lazy<IntCounterVec> = Lazy::new(|| {
+    register_int_counter_vec!(
+        "indexer_grpc_num_multi_thread_fetch_overlapped_versions",
+        "Number of versions that were overlapped in a multi-task fetch pull",
+        &["service_type", "overlap_type"],
+    )
+    .unwrap()
+});
+
+/// Number of times we internally retry fetching a transaction/block
+pub static TRANSACTION_STORE_FETCH_RETRIES: Lazy<IntCounterVec> = Lazy::new(|| {
+    register_int_counter_vec!(
+        "indexer_grpc_num_transaction_store_fetch_retries",
+        "Number of times we internally retry fetching a transaction/block",
+        &["store"],
     )
     .unwrap()
 });
@@ -196,7 +228,7 @@ pub fn log_grpc_step(
     duration_in_secs: Option<f64>,
     size_in_bytes: Option<usize>,
     num_transactions: Option<i64>,
-    request_metadata: Option<IndexerGrpcRequestMetadata>,
+    request_metadata: Option<&IndexerGrpcRequestMetadata>,
 ) {
     if let Some(duration_in_secs) = duration_in_secs {
         DURATION_IN_SECS
@@ -242,7 +274,7 @@ pub fn log_grpc_step(
             step.get_label(),
         );
     } else {
-        let request_metadata = request_metadata.clone().unwrap();
+        let request_metadata = request_metadata.unwrap();
         tracing::info!(
             start_version,
             end_version,
@@ -252,12 +284,12 @@ pub fn log_grpc_step(
             duration_in_secs,
             size_in_bytes,
             // Request metadata variables
-            request_name = request_metadata.processor_name.as_str(),
-            request_email = request_metadata.request_email.as_str(),
-            request_api_key_name = request_metadata.request_api_key_name.as_str(),
-            processor_name = request_metadata.processor_name.as_str(),
-            connection_id = request_metadata.request_connection_id.as_str(),
-            request_user_classification = request_metadata.request_user_classification.as_str(),
+            processor_name = &request_metadata.processor_name,
+            request_identifier_type = &request_metadata.request_identifier_type,
+            request_identifier = &request_metadata.request_identifier,
+            request_email = &request_metadata.request_email,
+            request_application_name = &request_metadata.request_application_name,
+            connection_id = &request_metadata.request_connection_id,
             service_type,
             step = step.get_step(),
             "{}",

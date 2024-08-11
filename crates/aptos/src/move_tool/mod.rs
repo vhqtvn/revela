@@ -1,22 +1,16 @@
 // Copyright © Aptos Foundation
 // SPDX-License-Identifier: Apache-2.0
 
-mod aptos_debug_natives;
-pub mod coverage;
-mod disassembler;
-mod manifest;
-pub mod package_hooks;
-mod show;
-pub mod stored_package;
-
 use crate::{
     account::derive_resource_account::ResourceAccountSeed,
     common::{
+        local_simulation,
         types::{
             load_account_arg, ArgWithTypeJSON, CliConfig, CliError, CliTypedResult,
             ConfigSearchMode, EntryFunctionArguments, EntryFunctionArgumentsJSON,
-            MoveManifestAccountWrapper, MovePackageDir, ProfileOptions, PromptOptions, RestOptions,
-            SaveFile, ScriptFunctionArguments, TransactionOptions, TransactionSummary,
+            MoveManifestAccountWrapper, MovePackageDir, OverrideSizeCheckOption, ProfileOptions,
+            PromptOptions, RestOptions, SaveFile, ScriptFunctionArguments, TransactionOptions,
+            TransactionSummary,
         },
         utils::{
             check_if_file_exists, create_dir_if_not_exist, dir_default_to_current,
@@ -25,8 +19,8 @@ use crate::{
     },
     governance::CompileScriptFunction,
     move_tool::{
+        bytecode::{Decompile, Disassemble},
         coverage::SummaryCoverage,
-        disassembler::Disassemble,
         manifest::{Dependency, ManifestNamedAddress, MovePackageManifest, PackageInfo},
     },
     CliCommand, CliResult,
@@ -37,21 +31,28 @@ use aptos_framework::{
     BuildOptions, BuiltPackage,
 };
 use aptos_gas_schedule::{MiscGasParameters, NativeGasParameters};
-use aptos_rest_client::aptos_api_types::{
-    EntryFunctionId, HexEncodedBytes, IdentifierWrapper, MoveModuleId,
+use aptos_move_debugger::aptos_debugger::AptosDebugger;
+use aptos_rest_client::{
+    aptos_api_types::{EntryFunctionId, HexEncodedBytes, IdentifierWrapper, MoveModuleId},
+    Client,
 };
 use aptos_types::{
     account_address::{create_resource_address, AccountAddress},
-    transaction::{TransactionArgument, TransactionPayload},
+    object_address::create_object_code_deployment_address,
+    on_chain_config::aptos_test_feature_flags_genesis,
+    transaction::{Transaction, TransactionArgument, TransactionPayload, TransactionStatus},
 };
+use aptos_vm::data_cache::AsMoveResolver;
 use async_trait::async_trait;
 use clap::{Parser, Subcommand, ValueEnum};
 use itertools::Itertools;
 use move_cli::{self, base::test::UnitTestResult};
 use move_command_line_common::env::MOVE_HOME;
 use move_core_types::{identifier::Identifier, language_storage::ModuleId, u256::U256};
+use move_model::metadata::{CompilerVersion, LanguageVersion};
 use move_package::{
-    source_package::layout::SourcePackageLayout, BuildConfig, CompilerConfig, CompilerVersion,
+    source_package::{layout::SourcePackageLayout, std_lib::StdVersion},
+    BuildConfig, CompilerConfig,
 };
 use move_unit_test::UnitTestingConfig;
 pub use package_hooks::*;
@@ -65,8 +66,21 @@ use std::{
 };
 pub use stored_package::*;
 use tokio::task;
+use url::Url;
 
-/// Tool for Move related operations
+mod aptos_debug_natives;
+mod bytecode;
+pub mod coverage;
+mod manifest;
+pub mod package_hooks;
+mod show;
+pub mod stored_package;
+
+const HELLO_BLOCKCHAIN_EXAMPLE: &str = include_str!(
+    "../../../../aptos-move/move-examples/hello_blockchain/sources/hello_blockchain.move"
+);
+
+/// Tool for Move smart contract related operations
 ///
 /// This tool lets you compile, test, and publish Move code, in addition
 /// to run any other tools that help run, verify, or provide information
@@ -75,17 +89,26 @@ use tokio::task;
 pub enum MoveTool {
     BuildPublishPayload(BuildPublishPayload),
     Clean(CleanPackage),
+    #[clap(alias = "build")]
     Compile(CompilePackage),
+    #[clap(alias = "build-script")]
     CompileScript(CompileScript),
     #[clap(subcommand)]
     Coverage(coverage::CoveragePackage),
+    CreateObjectAndPublishPackage(CreateObjectAndPublishPackage),
+    UpgradeObjectPackage(UpgradeObjectPackage),
+    DeployObject(DeployObjectCode),
+    UpgradeObject(UpgradeCodeObject),
     CreateResourceAccountAndPublishPackage(CreateResourceAccountAndPublishPackage),
     Disassemble(Disassemble),
+    Decompile(Decompile),
+    #[clap(alias = "doc")]
     Document(DocumentPackage),
     Download(DownloadPackage),
     Init(InitPackage),
     List(ListPackage),
     Prove(ProvePackage),
+    #[clap(alias = "deploy")]
     Publish(PublishPackage),
     Run(RunFunction),
     RunScript(RunScript),
@@ -94,6 +117,7 @@ pub enum MoveTool {
     Test(TestPackage),
     VerifyPackage(VerifyPackage),
     View(ViewFunction),
+    Replay(Replay),
 }
 
 impl MoveTool {
@@ -104,10 +128,17 @@ impl MoveTool {
             MoveTool::Compile(tool) => tool.execute_serialized().await,
             MoveTool::CompileScript(tool) => tool.execute_serialized().await,
             MoveTool::Coverage(tool) => tool.execute().await,
+            MoveTool::CreateObjectAndPublishPackage(tool) => {
+                tool.execute_serialized_success().await
+            },
+            MoveTool::UpgradeObjectPackage(tool) => tool.execute_serialized_success().await,
+            MoveTool::DeployObject(tool) => tool.execute_serialized_success().await,
+            MoveTool::UpgradeObject(tool) => tool.execute_serialized_success().await,
             MoveTool::CreateResourceAccountAndPublishPackage(tool) => {
                 tool.execute_serialized_success().await
             },
             MoveTool::Disassemble(tool) => tool.execute_serialized().await,
+            MoveTool::Decompile(tool) => tool.execute_serialized().await,
             MoveTool::Document(tool) => tool.execute_serialized().await,
             MoveTool::Download(tool) => tool.execute_serialized().await,
             MoveTool::Init(tool) => tool.execute_serialized_success().await,
@@ -120,6 +151,7 @@ impl MoveTool {
             MoveTool::Test(tool) => tool.execute_serialized().await,
             MoveTool::VerifyPackage(tool) => tool.execute_serialized().await,
             MoveTool::View(tool) => tool.execute_serialized().await,
+            MoveTool::Replay(tool) => tool.execute_serialized().await,
         }
     }
 }
@@ -224,6 +256,11 @@ impl FrameworkPackageArgs {
     }
 }
 
+#[derive(ValueEnum, Clone, Copy, Debug)]
+pub enum Template {
+    HelloBlockchain,
+}
+
 /// Creates a new Move package at the given location
 ///
 /// This will create a directory for a Move package and a corresponding
@@ -245,8 +282,16 @@ pub struct InitPackage {
     /// Example: alice=0x1234,bob=0x5678,greg=_
     ///
     /// Note: This will fail if there are duplicates in the Move.toml file remove those first.
-    #[clap(long, value_parser = crate::common::utils::parse_map::<String, MoveManifestAccountWrapper>, default_value = "")]
+    #[clap(
+        long,
+        value_parser = crate::common::utils::parse_map::<String, MoveManifestAccountWrapper>,
+        default_value = ""
+    )]
     pub(crate) named_addresses: BTreeMap<String, MoveManifestAccountWrapper>,
+
+    /// Template name for initialization
+    #[clap(long)]
+    pub(crate) template: Option<Template>,
 
     #[clap(flatten)]
     pub(crate) prompt_options: PromptOptions,
@@ -263,18 +308,48 @@ impl CliCommand<()> for InitPackage {
 
     async fn execute(self) -> CliTypedResult<()> {
         let package_dir = dir_default_to_current(self.package_dir.clone())?;
-        let addresses = self
+        let mut addresses: BTreeMap<String, ManifestNamedAddress> = self
             .named_addresses
             .into_iter()
             .map(|(key, value)| (key, value.account_address.into()))
             .collect();
 
-        self.framework_package_args.init_move_dir(
-            package_dir.as_path(),
-            &self.name,
-            addresses,
-            self.prompt_options,
-        )
+        // Add in any template associated
+        match self.template {
+            None => {
+                // Initialize move directory
+                // TODO: Communicate this breaking change before filling in the template as default
+                let package_dir_path = package_dir.as_path();
+                self.framework_package_args.init_move_dir(
+                    package_dir_path,
+                    &self.name,
+                    addresses,
+                    self.prompt_options,
+                )
+            },
+            Some(Template::HelloBlockchain) => {
+                // Setup the Hello blockchain template
+                // Note: We have to override the addresses
+                addresses.insert("hello_blockchain".to_string(), None.into());
+
+                // Initialize move directory
+                let package_dir_path = package_dir.as_path();
+                self.framework_package_args.init_move_dir(
+                    package_dir_path,
+                    "HelloBlockchainExample",
+                    addresses,
+                    self.prompt_options,
+                )?;
+
+                write_to_file(
+                    package_dir_path
+                        .join("sources/hello_blockchain.move")
+                        .as_path(),
+                    "hello_blockchain.move",
+                    HELLO_BLOCKCHAIN_EXAMPLE.as_bytes(),
+                )
+            },
+        }
     }
 }
 
@@ -310,8 +385,10 @@ impl CliCommand<Vec<String>> for CompilePackage {
                     self.move_options.dev,
                     self.move_options.skip_fetch_latest_git_deps,
                     self.move_options.named_addresses(),
+                    self.move_options.override_std.clone(),
                     self.move_options.bytecode_version,
                     self.move_options.compiler_version,
+                    self.move_options.language_version,
                     self.move_options.skip_attribute_checks,
                     self.move_options.check_test_code,
                 )
@@ -372,8 +449,10 @@ impl CompileScript {
                 self.move_options.dev,
                 self.move_options.skip_fetch_latest_git_deps,
                 self.move_options.named_addresses(),
+                self.move_options.override_std.clone(),
                 self.move_options.bytecode_version,
                 self.move_options.compiler_version,
+                self.move_options.language_version,
                 self.move_options.skip_attribute_checks,
                 self.move_options.check_test_code,
             )
@@ -460,6 +539,7 @@ impl CliCommand<&'static str> for TestPackage {
                 known_attributes: known_attributes.clone(),
                 skip_attribute_checks: self.move_options.skip_attribute_checks,
                 compiler_version: self.move_options.compiler_version,
+                language_version: self.move_options.language_version,
                 ..Default::default()
             },
             ..Default::default()
@@ -481,6 +561,7 @@ impl CliCommand<&'static str> for TestPackage {
                 NativeGasParameters::zeros(),
                 MiscGasParameters::zeros(),
             ),
+            aptos_test_feature_flags_genesis(),
             None,
             self.compute_coverage,
             &mut std::io::stdout(),
@@ -540,8 +621,11 @@ impl CliCommand<&'static str> for ProvePackage {
                 move_options.get_package_path()?.as_path(),
                 move_options.named_addresses(),
                 move_options.bytecode_version,
+                move_options.compiler_version,
+                move_options.language_version,
                 move_options.skip_attribute_checks,
                 extended_checks::get_all_attribute_names(),
+                &[],
             )
         })
         .await
@@ -585,13 +669,16 @@ impl CliCommand<&'static str> for DocumentPackage {
             with_docs: true,
             install_dir: None,
             named_addresses: move_options.named_addresses(),
+            override_std: move_options.override_std.clone(),
             docgen_options: Some(docgen_options),
             skip_fetch_latest_git_deps: move_options.skip_fetch_latest_git_deps,
             bytecode_version: move_options.bytecode_version,
             compiler_version: move_options.compiler_version,
+            language_version: move_options.language_version,
             skip_attribute_checks: move_options.skip_attribute_checks,
             check_test_code: move_options.check_test_code,
             known_attributes: extended_checks::get_all_attribute_names().clone(),
+            experiments: vec![],
         };
         BuiltPackage::build(move_options.get_package_path()?, build_options)?;
         Ok("succeeded")
@@ -616,9 +703,8 @@ pub struct IncludedArtifactsArgs {
 /// Publishes the modules in a Move package to the Aptos blockchain
 #[derive(Parser)]
 pub struct PublishPackage {
-    /// Whether to override the check for maximal size of published data
-    #[clap(long)]
-    pub(crate) override_size_check: bool,
+    #[clap(flatten)]
+    pub(crate) override_size_check_option: OverrideSizeCheckOption,
 
     #[clap(flatten)]
     pub(crate) included_artifacts_args: IncludedArtifactsArgs,
@@ -656,8 +742,10 @@ impl TryInto<PackagePublicationData> for &PublishPackage {
                 self.move_options.dev,
                 self.move_options.skip_fetch_latest_git_deps,
                 self.move_options.named_addresses(),
+                self.move_options.override_std.clone(),
                 self.move_options.bytecode_version,
                 self.move_options.compiler_version,
+                self.move_options.language_version,
                 self.move_options.skip_attribute_checks,
                 self.move_options.check_test_code,
             );
@@ -672,7 +760,7 @@ impl TryInto<PackagePublicationData> for &PublishPackage {
         );
         let size = bcs::serialized_size(&payload)?;
         println!("package size {} bytes", size);
-        if !self.override_size_check && size > MAX_PUBLISH_PACKAGE_SIZE {
+        if !self.override_size_check_option.override_size_check && size > MAX_PUBLISH_PACKAGE_SIZE {
             return Err(CliError::UnexpectedError(format!(
                 "The package is larger than {} bytes ({} bytes)! To lower the size \
                 you may want to include fewer artifacts via `--included-artifacts`. \
@@ -726,8 +814,10 @@ impl IncludedArtifacts {
         dev: bool,
         skip_fetch_latest_git_deps: bool,
         named_addresses: BTreeMap<String, AccountAddress>,
+        override_std: Option<StdVersion>,
         bytecode_version: Option<u32>,
         compiler_version: Option<CompilerVersion>,
+        language_version: Option<LanguageVersion>,
         skip_attribute_checks: bool,
         check_test_code: bool,
     ) -> BuildOptions {
@@ -741,9 +831,11 @@ impl IncludedArtifacts {
                 // Always enable error map bytecode injection
                 with_error_map: true,
                 named_addresses,
+                override_std,
                 skip_fetch_latest_git_deps,
                 bytecode_version,
                 compiler_version,
+                language_version,
                 skip_attribute_checks,
                 check_test_code,
                 known_attributes: extended_checks::get_all_attribute_names().clone(),
@@ -756,9 +848,11 @@ impl IncludedArtifacts {
                 with_source_maps: false,
                 with_error_map: true,
                 named_addresses,
+                override_std,
                 skip_fetch_latest_git_deps,
                 bytecode_version,
                 compiler_version,
+                language_version,
                 skip_attribute_checks,
                 check_test_code,
                 known_attributes: extended_checks::get_all_attribute_names().clone(),
@@ -771,9 +865,11 @@ impl IncludedArtifacts {
                 with_source_maps: true,
                 with_error_map: true,
                 named_addresses,
+                override_std,
                 skip_fetch_latest_git_deps,
                 bytecode_version,
                 compiler_version,
+                language_version,
                 skip_attribute_checks,
                 check_test_code,
                 known_attributes: extended_checks::get_all_attribute_names().clone(),
@@ -853,6 +949,370 @@ impl CliCommand<String> for BuildPublishPayload {
     }
 }
 
+/// Publishes the modules in a Move package to the Aptos blockchain, under an object.
+#[derive(Parser)]
+pub struct CreateObjectAndPublishPackage {
+    /// The named address for compiling and using in the contract
+    ///
+    /// This will take the derived account address for the object and put it in this location
+    #[clap(long)]
+    pub(crate) address_name: String,
+    #[clap(flatten)]
+    pub(crate) override_size_check_option: OverrideSizeCheckOption,
+    #[clap(flatten)]
+    pub(crate) included_artifacts_args: IncludedArtifactsArgs,
+    #[clap(flatten)]
+    pub(crate) move_options: MovePackageDir,
+    #[clap(flatten)]
+    pub(crate) txn_options: TransactionOptions,
+}
+
+#[async_trait]
+impl CliCommand<TransactionSummary> for CreateObjectAndPublishPackage {
+    fn command_name(&self) -> &'static str {
+        "CreateObjectAndPublishPackage"
+    }
+
+    async fn execute(mut self) -> CliTypedResult<TransactionSummary> {
+        let sender_address = self.txn_options.get_public_key_and_address()?.1;
+        let sequence_number = self.txn_options.sequence_number(sender_address).await? + 1;
+        let object_address = create_object_code_deployment_address(sender_address, sequence_number);
+
+        self.move_options
+            .add_named_address(self.address_name, object_address.to_string());
+
+        let options = self
+            .included_artifacts_args
+            .included_artifacts
+            .build_options(
+                self.move_options.dev,
+                self.move_options.skip_fetch_latest_git_deps,
+                self.move_options.named_addresses(),
+                self.move_options.override_std.clone(),
+                self.move_options.bytecode_version,
+                self.move_options.compiler_version,
+                self.move_options.language_version,
+                self.move_options.skip_attribute_checks,
+                self.move_options.check_test_code,
+            );
+        let package = BuiltPackage::build(self.move_options.get_package_path()?, options)?;
+        let message = format!(
+            "Do you want to publish this package at object address {}",
+            object_address
+        );
+        prompt_yes_with_override(&message, self.txn_options.prompt_options)?;
+
+        let payload = aptos_cached_packages::aptos_stdlib::object_code_deployment_publish(
+            bcs::to_bytes(&package.extract_metadata()?)
+                .expect("Failed to serialize PackageMetadata"),
+            package.extract_code(),
+        );
+        let size = bcs::serialized_size(&payload)?;
+        println!("package size {} bytes", size);
+
+        if !self.override_size_check_option.override_size_check && size > MAX_PUBLISH_PACKAGE_SIZE {
+            return Err(CliError::UnexpectedError(format!(
+                "The package is larger than {} bytes ({} bytes)! To lower the size \
+                you may want to include less artifacts via `--included-artifacts`. \
+                You can also override this check with `--override-size-check",
+                MAX_PUBLISH_PACKAGE_SIZE, size
+            )));
+        }
+        let result = self
+            .txn_options
+            .submit_transaction(payload)
+            .await
+            .map(TransactionSummary::from);
+
+        if result.is_ok() {
+            println!(
+                "Code was successfully deployed to object address {}.",
+                object_address
+            );
+        }
+        result
+    }
+}
+
+#[derive(Parser)]
+pub struct UpgradeObjectPackage {
+    /// Address of the object the package was deployed to
+    ///
+    /// This must be an already deployed object containing the package
+    /// if the package is not already created, it will fail.
+    #[clap(long, value_parser = crate::common::types::load_account_arg)]
+    pub(crate) object_address: AccountAddress,
+    #[clap(flatten)]
+    pub(crate) override_size_check_option: OverrideSizeCheckOption,
+    #[clap(flatten)]
+    pub(crate) included_artifacts_args: IncludedArtifactsArgs,
+    #[clap(flatten)]
+    pub(crate) move_options: MovePackageDir,
+    #[clap(flatten)]
+    pub(crate) txn_options: TransactionOptions,
+}
+
+#[async_trait]
+impl CliCommand<TransactionSummary> for UpgradeObjectPackage {
+    fn command_name(&self) -> &'static str {
+        "UpgradeObjectPackage"
+    }
+
+    async fn execute(self) -> CliTypedResult<TransactionSummary> {
+        let options = self
+            .included_artifacts_args
+            .included_artifacts
+            .build_options(
+                self.move_options.dev,
+                self.move_options.skip_fetch_latest_git_deps,
+                self.move_options.named_addresses(),
+                self.move_options.override_std.clone(),
+                self.move_options.bytecode_version,
+                self.move_options.compiler_version,
+                self.move_options.language_version,
+                self.move_options.skip_attribute_checks,
+                self.move_options.check_test_code,
+            );
+        let built_package = BuiltPackage::build(self.move_options.get_package_path()?, options)?;
+        let url = self
+            .txn_options
+            .rest_options
+            .url(&self.txn_options.profile_options)?;
+
+        // Get the `PackageRegistry` at the given object address.
+        let registry = CachedPackageRegistry::create(url, self.object_address, false).await?;
+        let package = registry
+            .get_package(built_package.name())
+            .await
+            .map_err(|s| CliError::CommandArgumentError(s.to_string()))?;
+
+        if package.upgrade_policy() == UpgradePolicy::immutable() {
+            return Err(CliError::CommandArgumentError(
+                "A package with upgrade policy `immutable` cannot be upgraded".to_owned(),
+            ));
+        }
+
+        let message = format!(
+            "Do you want to upgrade the package '{}' at object address {}",
+            package.name(),
+            self.object_address
+        );
+        prompt_yes_with_override(&message, self.txn_options.prompt_options)?;
+
+        let payload = aptos_cached_packages::aptos_stdlib::object_code_deployment_upgrade(
+            bcs::to_bytes(&built_package.extract_metadata()?)
+                .expect("Failed to serialize PackageMetadata"),
+            built_package.extract_code(),
+            self.object_address,
+        );
+        let size = bcs::serialized_size(&payload)?;
+        println!("package size {} bytes", size);
+
+        if !self.override_size_check_option.override_size_check && size > MAX_PUBLISH_PACKAGE_SIZE {
+            return Err(CliError::UnexpectedError(format!(
+                "The package is larger than {} bytes ({} bytes)! To lower the size \
+                you may want to include less artifacts via `--included-artifacts`. \
+                You can also override this check with `--override-size-check",
+                MAX_PUBLISH_PACKAGE_SIZE, size
+            )));
+        }
+        let result = self
+            .txn_options
+            .submit_transaction(payload)
+            .await
+            .map(TransactionSummary::from);
+
+        if result.is_ok() {
+            println!(
+                "Code was successfully upgraded at object address {}.",
+                self.object_address
+            );
+        }
+        result
+    }
+}
+
+/// Publishes the modules in a Move package to the Aptos blockchain, under an object.
+#[derive(Parser)]
+pub struct DeployObjectCode {
+    /// The named address for compiling and using in the contract
+    ///
+    /// This will take the derived account address for the object and put it in this location
+    #[clap(long)]
+    pub(crate) address_name: String,
+    #[clap(flatten)]
+    pub(crate) override_size_check_option: OverrideSizeCheckOption,
+    #[clap(flatten)]
+    pub(crate) included_artifacts_args: IncludedArtifactsArgs,
+    #[clap(flatten)]
+    pub(crate) move_options: MovePackageDir,
+    #[clap(flatten)]
+    pub(crate) txn_options: TransactionOptions,
+}
+
+#[async_trait]
+impl CliCommand<TransactionSummary> for DeployObjectCode {
+    fn command_name(&self) -> &'static str {
+        "DeployObject"
+    }
+
+    async fn execute(mut self) -> CliTypedResult<TransactionSummary> {
+        let sender_address = self.txn_options.get_public_key_and_address()?.1;
+        let sequence_number = self.txn_options.sequence_number(sender_address).await? + 1;
+        let object_address = create_object_code_deployment_address(sender_address, sequence_number);
+
+        self.move_options
+            .add_named_address(self.address_name, object_address.to_string());
+
+        let package =
+            build_package_options(&self.move_options, &self.included_artifacts_args).unwrap();
+        let message = format!(
+            "Do you want to deploy this package at object address {}",
+            object_address
+        );
+        prompt_yes_with_override(&message, self.txn_options.prompt_options)?;
+
+        let payload = aptos_cached_packages::aptos_stdlib::object_code_deployment_publish(
+            bcs::to_bytes(&package.extract_metadata()?)
+                .expect("Failed to serialize PackageMetadata"),
+            package.extract_code(),
+        );
+
+        submit_tx_and_check(
+            &self.txn_options,
+            payload,
+            &object_address.to_string(),
+            self.override_size_check_option.override_size_check,
+            "Code was successfully deployed to object address {}.",
+        )
+        .await
+    }
+}
+
+#[derive(Parser)]
+pub struct UpgradeCodeObject {
+    /// The named address for compiling and using in the contract
+    #[clap(long)]
+    pub(crate) address_name: String,
+    /// Address of the object the package was deployed to
+    ///
+    /// This must be an already deployed object containing the package
+    /// if the package is not already created, it will fail.
+    #[clap(long, value_parser = crate::common::types::load_account_arg)]
+    pub(crate) object_address: AccountAddress,
+    #[clap(flatten)]
+    pub(crate) override_size_check_option: OverrideSizeCheckOption,
+    #[clap(flatten)]
+    pub(crate) included_artifacts_args: IncludedArtifactsArgs,
+    #[clap(flatten)]
+    pub(crate) move_options: MovePackageDir,
+    #[clap(flatten)]
+    pub(crate) txn_options: TransactionOptions,
+}
+
+#[async_trait]
+impl CliCommand<TransactionSummary> for UpgradeCodeObject {
+    fn command_name(&self) -> &'static str {
+        "UpgradeObject"
+    }
+
+    async fn execute(mut self) -> CliTypedResult<TransactionSummary> {
+        self.move_options
+            .add_named_address(self.address_name, self.object_address.to_string());
+
+        let package =
+            build_package_options(&self.move_options, &self.included_artifacts_args).unwrap();
+        let url = self
+            .txn_options
+            .rest_options
+            .url(&self.txn_options.profile_options)?;
+
+        // Get the `PackageRegistry` at the given code object address.
+        let registry = CachedPackageRegistry::create(url, self.object_address, false).await?;
+        let package_info = registry
+            .get_package(package.name())
+            .await
+            .map_err(|s| CliError::CommandArgumentError(s.to_string()))?;
+
+        if package_info.upgrade_policy() == UpgradePolicy::immutable() {
+            return Err(CliError::CommandArgumentError(
+                "A code package with upgrade policy `immutable` cannot be upgraded".to_owned(),
+            ));
+        }
+
+        let message = format!(
+            "Do you want to upgrade the code package '{}' at object address {}",
+            package_info.name(),
+            self.object_address
+        );
+        prompt_yes_with_override(&message, self.txn_options.prompt_options)?;
+
+        let payload = aptos_cached_packages::aptos_stdlib::object_code_deployment_upgrade(
+            bcs::to_bytes(&package.extract_metadata()?)
+                .expect("Failed to serialize PackageMetadata"),
+            package.extract_code(),
+            self.object_address,
+        );
+
+        submit_tx_and_check(
+            &self.txn_options,
+            payload,
+            &self.object_address.to_string(),
+            self.override_size_check_option.override_size_check,
+            "Code was successfully upgraded at object address {}.",
+        )
+        .await
+    }
+}
+
+fn build_package_options(
+    move_options: &MovePackageDir,
+    included_artifacts_args: &IncludedArtifactsArgs,
+) -> anyhow::Result<BuiltPackage> {
+    let options = included_artifacts_args.included_artifacts.build_options(
+        move_options.dev,
+        move_options.skip_fetch_latest_git_deps,
+        move_options.named_addresses(),
+        move_options.override_std.clone(),
+        move_options.bytecode_version,
+        move_options.compiler_version,
+        move_options.language_version,
+        move_options.skip_attribute_checks,
+        move_options.check_test_code,
+    );
+    BuiltPackage::build(move_options.get_package_path()?, options)
+}
+
+async fn submit_tx_and_check(
+    txn_options: &TransactionOptions,
+    payload: TransactionPayload,
+    object_address: &str,
+    override_size_check: bool,
+    success_message: &str,
+) -> CliTypedResult<TransactionSummary> {
+    let size = bcs::serialized_size(&payload)?;
+    println!("package size {} bytes", size);
+
+    if !override_size_check && size > MAX_PUBLISH_PACKAGE_SIZE {
+        return Err(CliError::UnexpectedError(format!(
+            "The package is larger than {} bytes ({} bytes)! To lower the size \
+            you may want to include fewer artifacts via `--included-artifacts`. \
+            You can also override this check with `--override-size-check",
+            MAX_PUBLISH_PACKAGE_SIZE, size
+        )));
+    }
+
+    let result = txn_options
+        .submit_transaction(payload)
+        .await
+        .map(TransactionSummary::from);
+
+    if result.is_ok() {
+        println!("{} {}", success_message, object_address);
+    }
+    result
+}
+
 /// Publishes the modules in a Move package to the Aptos blockchain under a resource account
 #[derive(Parser)]
 pub struct CreateResourceAccountAndPublishPackage {
@@ -862,12 +1322,8 @@ pub struct CreateResourceAccountAndPublishPackage {
     #[clap(long)]
     pub(crate) address_name: String,
 
-    /// Whether to override the check for maximal size of published data
-    ///
-    /// This won't bypass on chain checks, so if you are not allowed to go over the size check, it
-    /// will still be blocked from publishing.
-    #[clap(long)]
-    pub(crate) override_size_check: bool,
+    #[clap(flatten)]
+    pub(crate) override_size_check_option: OverrideSizeCheckOption,
 
     #[clap(flatten)]
     pub(crate) seed_args: ResourceAccountSeed,
@@ -890,7 +1346,7 @@ impl CliCommand<TransactionSummary> for CreateResourceAccountAndPublishPackage {
             address_name,
             mut move_options,
             txn_options,
-            override_size_check,
+            override_size_check_option,
             included_artifacts_args,
             seed_args,
         } = self;
@@ -917,8 +1373,10 @@ impl CliCommand<TransactionSummary> for CreateResourceAccountAndPublishPackage {
             move_options.dev,
             move_options.skip_fetch_latest_git_deps,
             move_options.named_addresses(),
+            move_options.override_std,
             move_options.bytecode_version,
             move_options.compiler_version,
+            move_options.language_version,
             move_options.skip_attribute_checks,
             move_options.check_test_code,
         );
@@ -941,7 +1399,7 @@ impl CliCommand<TransactionSummary> for CreateResourceAccountAndPublishPackage {
         );
         let size = bcs::serialized_size(&payload)?;
         println!("package size {} bytes", size);
-        if !override_size_check && size > MAX_PUBLISH_PACKAGE_SIZE {
+        if !override_size_check_option.override_size_check && size > MAX_PUBLISH_PACKAGE_SIZE {
             return Err(CliError::UnexpectedError(format!(
                 "The package is larger than {} bytes ({} bytes)! To lower the size \
                 you may want to include less artifacts via `--included-artifacts`. \
@@ -974,6 +1432,10 @@ pub struct DownloadPackage {
     #[clap(long, value_parser)]
     pub output_dir: Option<PathBuf>,
 
+    /// Whether to download the bytecode of the package.
+    #[clap(long, short)]
+    pub bytecode: bool,
+
     #[clap(flatten)]
     pub(crate) rest_options: RestOptions,
     #[clap(flatten)]
@@ -991,7 +1453,7 @@ impl CliCommand<&'static str> for DownloadPackage {
 
     async fn execute(self) -> CliTypedResult<&'static str> {
         let url = self.rest_options.url(&self.profile_options)?;
-        let registry = CachedPackageRegistry::create(url, self.account).await?;
+        let registry = CachedPackageRegistry::create(url, self.account, self.bytecode).await?;
         let output_dir = dir_default_to_current(self.output_dir)?;
 
         let package = registry
@@ -1012,6 +1474,13 @@ impl CliCommand<&'static str> for DownloadPackage {
         package
             .save_package_to_disk(package_path.as_path())
             .map_err(|e| CliError::UnexpectedError(format!("Failed to save package: {}", e)))?;
+        if self.bytecode {
+            for module in package.module_names() {
+                if let Some(bytecode) = registry.get_bytecode(module).await? {
+                    package.save_bytecode_to_disk(package_path.as_path(), module, bytecode)?
+                }
+            }
+        };
         println!(
             "Saved package with {} module(s) to `{}`",
             package.module_names().len(),
@@ -1057,8 +1526,10 @@ impl CliCommand<&'static str> for VerifyPackage {
                 self.move_options.dev,
                 self.move_options.skip_fetch_latest_git_deps,
                 self.move_options.named_addresses(),
+                self.move_options.override_std.clone(),
                 self.move_options.bytecode_version,
                 self.move_options.compiler_version,
+                self.move_options.language_version,
                 self.move_options.skip_attribute_checks,
                 self.move_options.check_test_code,
             )
@@ -1069,7 +1540,7 @@ impl CliCommand<&'static str> for VerifyPackage {
 
         // Now pull the compiled package
         let url = self.rest_options.url(&self.profile_options)?;
-        let registry = CachedPackageRegistry::create(url, self.account).await?;
+        let registry = CachedPackageRegistry::create(url, self.account, false).await?;
         let package = registry
             .get_package(pack.name())
             .await
@@ -1142,7 +1613,7 @@ impl CliCommand<&'static str> for ListPackage {
 
     async fn execute(self) -> CliTypedResult<&'static str> {
         let url = self.rest_options.url(&self.profile_options)?;
-        let registry = CachedPackageRegistry::create(url, self.account).await?;
+        let registry = CachedPackageRegistry::create(url, self.account, false).await?;
         match self.query {
             MoveListQuery::Packages => {
                 for name in registry.package_names() {
@@ -1274,6 +1745,167 @@ impl CliCommand<TransactionSummary> for RunScript {
             &self.txn_options,
         )
         .await
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ReplayNetworkSelection {
+    Mainnet,
+    Testnet,
+    Devnet,
+    RestEndpoint(String),
+}
+
+/// Replay a comitted transaction using a local VM.
+#[derive(Parser, Debug)]
+pub struct Replay {
+    /// The network to replay on.
+    ///
+    /// Possible values:
+    ///     mainnet, testnet, <REST_ENDPOINT_URL>
+    #[clap(long)]
+    pub(crate) network: ReplayNetworkSelection,
+
+    /// The id of the transaction to replay. Also being referred to as "version" in some contexts.
+    #[clap(long)]
+    pub(crate) txn_id: u64,
+
+    /// If this option is set, benchmark the transaction and report the running time(s).
+    #[clap(long)]
+    pub(crate) benchmark: bool,
+
+    /// If this option is set, profile the transaction and generate a detailed report of its gas usage.
+    #[clap(long)]
+    pub(crate) profile_gas: bool,
+
+    /// If present, skip the comparison against the expected transaction output.
+    #[clap(long)]
+    pub(crate) skip_comparison: bool,
+}
+
+impl FromStr for ReplayNetworkSelection {
+    type Err = CliError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "mainnet" => Self::Mainnet,
+            "testnet" => Self::Testnet,
+            "devnet" => Self::Devnet,
+            _ => Self::RestEndpoint(s.to_owned()),
+        })
+    }
+}
+
+#[async_trait]
+impl CliCommand<TransactionSummary> for Replay {
+    fn command_name(&self) -> &'static str {
+        "Replay"
+    }
+
+    async fn execute(self) -> CliTypedResult<TransactionSummary> {
+        use ReplayNetworkSelection::*;
+
+        if self.profile_gas && self.benchmark {
+            return Err(CliError::UnexpectedError(
+                "Cannot perform benchmarking and gas profiling at the same time.".to_string(),
+            ));
+        }
+
+        let rest_endpoint = match &self.network {
+            Mainnet => "https://fullnode.mainnet.aptoslabs.com",
+            Testnet => "https://fullnode.testnet.aptoslabs.com",
+            Devnet => "https://fullnode.devnet.aptoslabs.com",
+            RestEndpoint(url) => url,
+        };
+
+        let debugger = AptosDebugger::rest_client(Client::new(
+            Url::parse(rest_endpoint)
+                .map_err(|_err| CliError::UnableToParse("url", rest_endpoint.to_string()))?,
+        ))?;
+
+        // Fetch the transaction to replay.
+        let (txn, txn_info) = debugger
+            .get_committed_transaction_at_version(self.txn_id)
+            .await?;
+
+        let txn = match txn {
+            Transaction::UserTransaction(txn) => txn,
+            _ => {
+                return Err(CliError::UnexpectedError(
+                    "Unsupported transaction type. Only user transactions are supported."
+                        .to_string(),
+                ))
+            },
+        };
+
+        let hash = txn.committed_hash();
+
+        // Execute the transaction.
+        let (vm_status, vm_output) = if self.profile_gas {
+            println!("Profiling transaction...");
+            local_simulation::profile_transaction_using_debugger(
+                &debugger,
+                self.txn_id,
+                txn.clone(),
+                hash,
+            )?
+        } else if self.benchmark {
+            println!("Benchmarking transaction...");
+            local_simulation::benchmark_transaction_using_debugger(
+                &debugger,
+                self.txn_id,
+                txn.clone(),
+                hash,
+            )?
+        } else {
+            println!("Replaying transaction...");
+            local_simulation::run_transaction_using_debugger(
+                &debugger,
+                self.txn_id,
+                txn.clone(),
+                hash,
+            )?
+        };
+
+        // Materialize into transaction output and check if the outputs match.
+        let state_view = debugger.state_view_at_version(self.txn_id);
+        let resolver = state_view.as_move_resolver();
+
+        let txn_output = vm_output
+            .try_materialize_into_transaction_output(&resolver)
+            .map_err(|err| {
+                CliError::UnexpectedError(format!(
+                    "Failed to materialize into transaction output: {}",
+                    err
+                ))
+            })?;
+
+        if !self.skip_comparison {
+            txn_output
+                .ensure_match_transaction_info(self.txn_id, &txn_info, None, None)
+                .map_err(|msg| CliError::UnexpectedError(msg.to_string()))?;
+        }
+
+        // Generate the transaction summary.
+        let success = match txn_output.status() {
+            TransactionStatus::Keep(exec_status) => Some(exec_status.is_success()),
+            TransactionStatus::Discard(_) | TransactionStatus::Retry => None,
+        };
+
+        let summary = TransactionSummary {
+            transaction_hash: txn.committed_hash().into(),
+            gas_used: Some(txn_output.gas_used()),
+            gas_unit_price: Some(txn.gas_unit_price()),
+            pending: None,
+            sender: Some(txn.sender()),
+            sequence_number: Some(txn.sequence_number()),
+            success,
+            timestamp_us: None,
+            version: Some(self.txn_id),
+            vm_status: Some(vm_status.to_string()),
+        };
+
+        Ok(summary)
     }
 }
 
@@ -1455,20 +2087,21 @@ impl FromStr for FunctionArgType {
             "u128" => Ok(FunctionArgType::U128),
             "u256" => Ok(FunctionArgType::U256),
             "raw" => Ok(FunctionArgType::Raw),
-            str => {Err(CliError::CommandArgumentError(format!(
-                "Invalid arg type '{}'.  Must be one of: ['{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}']",
-                str,
-                FunctionArgType::Address,
-                FunctionArgType::Bool,
-                FunctionArgType::Hex,
-                FunctionArgType::String,
-                FunctionArgType::U8,
-                FunctionArgType::U16,
-                FunctionArgType::U32,
-                FunctionArgType::U64,
-                FunctionArgType::U128,
-                FunctionArgType::U256,
-                FunctionArgType::Raw)))
+            str => {
+                Err(CliError::CommandArgumentError(format!(
+                    "Invalid arg type '{}'.  Must be one of: ['{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}']",
+                    str,
+                    FunctionArgType::Address,
+                    FunctionArgType::Bool,
+                    FunctionArgType::Hex,
+                    FunctionArgType::String,
+                    FunctionArgType::U8,
+                    FunctionArgType::U16,
+                    FunctionArgType::U32,
+                    FunctionArgType::U64,
+                    FunctionArgType::U128,
+                    FunctionArgType::U256,
+                    FunctionArgType::Raw)))
             }
         }
     }
