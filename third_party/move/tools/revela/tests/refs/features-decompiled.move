@@ -46,10 +46,10 @@ module 0x1::features {
         let v3 = arg2;
         0x1::vector::reverse<u64>(&mut v3);
         let v4 = v3;
-        let v5 = 0x1::vector::length<u64>(&v4);
-        while (v5 > 0) {
+        v2 = 0x1::vector::length<u64>(&v4);
+        while (v2 > 0) {
             set(arg0, 0x1::vector::pop_back<u64>(&mut v4), false);
-            v5 = v5 - 1;
+            v2 = v2 - 1;
         };
         0x1::vector::destroy_empty<u64>(v4);
     }
@@ -91,33 +91,34 @@ module 0x1::features {
             if (exists<Features>(@0x1)) {
                 borrow_global<Features>(@0x1).features
             } else {
-                b""
+                0x1::vector::empty<u8>()
             }
         };
-        let v1 = v0;
-        apply_diff(&mut v1, arg1, arg2);
-        let v2 = PendingFeatures{features: v1};
-        move_to<PendingFeatures>(arg0, v2);
+        apply_diff(&mut v0, arg1, arg2);
+        let v1 = PendingFeatures{features: v0};
+        move_to<PendingFeatures>(arg0, v1);
     }
     
     fun change_feature_flags_internal(arg0: &signer, arg1: vector<u64>, arg2: vector<u64>) acquires Features {
         assert!(0x1::signer::address_of(arg0) == @0x1, 0x1::error::permission_denied(1));
-        if (!exists<Features>(@0x1)) {
-            let v0 = Features{features: b""};
+        if (exists<Features>(@0x1)) {
+        } else {
+            let v0 = Features{features: 0x1::vector::empty<u8>()};
             move_to<Features>(arg0, v0);
         };
         let v1 = &mut borrow_global_mut<Features>(@0x1).features;
         let v2 = &arg1;
         let v3 = 0;
         while (v3 < 0x1::vector::length<u64>(v2)) {
-            set(v1, *0x1::vector::borrow<u64>(v2, v3), true);
+            let v4 = *0x1::vector::borrow<u64>(v2, v3);
+            set(v1, v4, true);
             v3 = v3 + 1;
         };
-        let v4 = &arg2;
-        let v5 = 0;
-        while (v5 < 0x1::vector::length<u64>(v4)) {
-            set(v1, *0x1::vector::borrow<u64>(v4, v5), false);
-            v5 = v5 + 1;
+        let v5 = &arg2;
+        v3 = 0;
+        while (v3 < 0x1::vector::length<u64>(v5)) {
+            set(v1, *0x1::vector::borrow<u64>(v5, v3), false);
+            v3 = v3 + 1;
         };
     }
     
@@ -499,5 +500,5 @@ module 0x1::features {
         is_enabled(2)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

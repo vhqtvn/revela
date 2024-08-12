@@ -117,5 +117,5 @@ module 0x1::fixed_point64 {
         create_from_raw_value(v0 - v1)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

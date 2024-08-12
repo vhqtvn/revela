@@ -93,5 +93,5 @@ module 0x1::ed25519 {
         arg0.bytes
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

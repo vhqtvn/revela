@@ -7,18 +7,19 @@ module 0x1::jwk_consensus_config {
         oidc_providers: vector<OIDCProvider>,
     }
     
-    struct JWKConsensusConfig has drop, store, key {
-        variant: 0x1::copyable_any::Any,
-    }
-    
     struct OIDCProvider has copy, drop, store {
         name: 0x1::string::String,
         config_url: 0x1::string::String,
     }
     
+    struct JWKConsensusConfig has drop, store, key {
+        variant: 0x1::copyable_any::Any,
+    }
+    
     public fun initialize(arg0: &signer, arg1: JWKConsensusConfig) {
         0x1::system_addresses::assert_aptos_framework(arg0);
-        if (!exists<JWKConsensusConfig>(@0x1)) {
+        if (exists<JWKConsensusConfig>(@0x1)) {
+        } else {
             move_to<JWKConsensusConfig>(arg0, arg1);
         };
     }
@@ -68,5 +69,5 @@ module 0x1::jwk_consensus_config {
         0x1::config_buffer::upsert<JWKConsensusConfig>(arg1);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

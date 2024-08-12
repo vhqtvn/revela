@@ -40,7 +40,8 @@ module 0x1::resource_account {
     
     fun rotate_account_authentication_key_and_store_capability(arg0: &signer, arg1: signer, arg2: 0x1::account::SignerCapability, arg3: vector<u8>) acquires Container {
         let v0 = 0x1::signer::address_of(arg0);
-        if (!exists<Container>(v0)) {
+        if (exists<Container>(v0)) {
+        } else {
             let v1 = Container{store: 0x1::simple_map::create<address, 0x1::account::SignerCapability>()};
             move_to<Container>(arg0, v1);
         };
@@ -55,5 +56,5 @@ module 0x1::resource_account {
         0x1::account::rotate_authentication_key_internal(&arg1, v4);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

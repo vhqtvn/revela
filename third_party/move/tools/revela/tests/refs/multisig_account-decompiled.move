@@ -1,4 +1,17 @@
 module 0x1::multisig_account {
+    struct Vote has drop, store {
+        multisig_account: address,
+        owner: address,
+        sequence_number: u64,
+        approved: bool,
+    }
+    
+    struct VoteEvent has drop, store {
+        owner: address,
+        sequence_number: u64,
+        approved: bool,
+    }
+    
     struct AddOwners has drop, store {
         multisig_account: address,
         owners_added: vector<address>,
@@ -146,21 +159,8 @@ module 0x1::multisig_account {
         new_num_signatures_required: u64,
     }
     
-    struct Vote has drop, store {
-        multisig_account: address,
-        owner: address,
-        sequence_number: u64,
-        approved: bool,
-    }
-    
-    struct VoteEvent has drop, store {
-        owner: address,
-        sequence_number: u64,
-        approved: bool,
-    }
-    
     public entry fun create(arg0: &signer, arg1: u64, arg2: vector<0x1::string::String>, arg3: vector<vector<u8>>) acquires MultisigAccount {
-        create_with_owners(arg0, vector[], arg1, arg2, arg3);
+        create_with_owners(arg0, 0x1::vector::empty<address>(), arg1, arg2, arg3);
     }
     
     entry fun add_owner(arg0: &signer, arg1: address) acquires MultisigAccount {
@@ -170,11 +170,13 @@ module 0x1::multisig_account {
     }
     
     entry fun add_owners(arg0: &signer, arg1: vector<address>) acquires MultisigAccount {
-        update_owner_schema(0x1::signer::address_of(arg0), arg1, vector[], 0x1::option::none<u64>());
+        let v0 = 0x1::vector::empty<address>();
+        update_owner_schema(0x1::signer::address_of(arg0), arg1, v0, 0x1::option::none<u64>());
     }
     
     entry fun add_owners_and_update_signatures_required(arg0: &signer, arg1: vector<address>, arg2: u64) acquires MultisigAccount {
-        update_owner_schema(0x1::signer::address_of(arg0), arg1, vector[], 0x1::option::some<u64>(arg2));
+        let v0 = 0x1::vector::empty<address>();
+        update_owner_schema(0x1::signer::address_of(arg0), arg1, v0, 0x1::option::some<u64>(arg2));
     }
     
     public entry fun approve_transaction(arg0: &signer, arg1: address, arg2: u64) acquires MultisigAccount {
@@ -204,20 +206,21 @@ module 0x1::multisig_account {
             let v7 = 0x1::vector::borrow<address>(v2, v6);
             if (0x1::simple_map::contains_key<address, bool>(v5, v7)) {
                 if (*0x1::simple_map::borrow<address, bool>(v5, v7)) {
-                    v3 = v3 + 1;
-                } else {
                     v4 = v4 + 1;
+                } else {
+                    v3 = v3 + 1;
                 };
             };
             v6 = v6 + 1;
         };
         let v8 = last_resolved_sequence_number(arg0);
         if (arg1 == v8 + 1) {
-            let v10 = num_signatures_required(arg0);
-            v3 >= v10
+            let v9 = num_signatures_required(arg0);
+            v10 = v4 >= v9;
         } else {
-            false
-        }
+            v10 = false;
+        };
+        v10
     }
     
     public fun can_be_rejected(arg0: address, arg1: u64) : bool acquires MultisigAccount {
@@ -233,20 +236,21 @@ module 0x1::multisig_account {
             let v7 = 0x1::vector::borrow<address>(v2, v6);
             if (0x1::simple_map::contains_key<address, bool>(v5, v7)) {
                 if (*0x1::simple_map::borrow<address, bool>(v5, v7)) {
-                    v3 = v3 + 1;
-                } else {
                     v4 = v4 + 1;
+                } else {
+                    v3 = v3 + 1;
                 };
             };
             v6 = v6 + 1;
         };
         let v8 = last_resolved_sequence_number(arg0);
         if (arg1 == v8 + 1) {
-            let v10 = num_signatures_required(arg0);
-            v4 >= v10
+            let v9 = num_signatures_required(arg0);
+            v10 = v3 >= v9;
         } else {
-            false
-        }
+            v10 = false;
+        };
+        v10
     }
     
     public fun can_execute(arg0: address, arg1: address, arg2: u64) : bool acquires MultisigAccount {
@@ -262,30 +266,36 @@ module 0x1::multisig_account {
             let v7 = 0x1::vector::borrow<address>(v2, v6);
             if (0x1::simple_map::contains_key<address, bool>(v5, v7)) {
                 if (*0x1::simple_map::borrow<address, bool>(v5, v7)) {
-                    v3 = v3 + 1;
-                } else {
                     v4 = v4 + 1;
+                } else {
+                    v3 = v3 + 1;
                 };
             };
             v6 = v6 + 1;
         };
-        let v8 = v3;
-        let (v9, v10) = vote(arg1, arg2, arg0);
-        if (!(v9 && v10)) {
-            v8 = v3 + 1;
-        };
-        let v11 = if (is_owner(arg0, arg1)) {
-            let v12 = last_resolved_sequence_number(arg1);
-            arg2 == v12 + 1
+        let (v8, v9) = vote(arg1, arg2, arg0);
+        if (v8) {
+            v12 = v9;
         } else {
-            false
+            v12 = false;
         };
-        if (v11) {
-            let v14 = num_signatures_required(arg1);
-            v8 >= v14
+        if (v12) {
         } else {
-            false
-        }
+            v4 = v4 + 1;
+        };
+        if (is_owner(arg0, arg1)) {
+            let v10 = last_resolved_sequence_number(arg1);
+            v12 = arg2 == v10 + 1;
+        } else {
+            v12 = false;
+        };
+        if (v12) {
+            let v11 = num_signatures_required(arg1);
+            v12 = v4 >= v11;
+        } else {
+            v12 = false;
+        };
+        v12
     }
     
     public fun can_reject(arg0: address, arg1: address, arg2: u64) : bool acquires MultisigAccount {
@@ -301,31 +311,36 @@ module 0x1::multisig_account {
             let v7 = 0x1::vector::borrow<address>(v2, v6);
             if (0x1::simple_map::contains_key<address, bool>(v5, v7)) {
                 if (*0x1::simple_map::borrow<address, bool>(v5, v7)) {
-                    v3 = v3 + 1;
-                } else {
                     v4 = v4 + 1;
+                } else {
+                    v3 = v3 + 1;
                 };
             };
             v6 = v6 + 1;
         };
-        let v8 = v4;
-        let (v9, v10) = vote(arg1, arg2, arg0);
-        let v11 = v9 && !v10;
-        if (!v11) {
-            v8 = v4 + 1;
-        };
-        let v12 = if (is_owner(arg0, arg1)) {
-            let v13 = last_resolved_sequence_number(arg1);
-            arg2 == v13 + 1
+        let (v8, v9) = vote(arg1, arg2, arg0);
+        if (v8) {
+            v12 = !v9;
         } else {
-            false
+            v12 = false;
         };
         if (v12) {
-            let v15 = num_signatures_required(arg1);
-            v8 >= v15
         } else {
-            false
-        }
+            v3 = v3 + 1;
+        };
+        if (is_owner(arg0, arg1)) {
+            let v10 = last_resolved_sequence_number(arg1);
+            v12 = arg2 == v10 + 1;
+        } else {
+            v12 = false;
+        };
+        if (v12) {
+            let v11 = num_signatures_required(arg1);
+            v12 = v3 >= v11;
+        } else {
+            v12 = false;
+        };
+        v12
     }
     
     fun create_multisig_account(arg0: &signer) : (signer, 0x1::account::SignerCapability) {
@@ -333,7 +348,8 @@ module 0x1::multisig_account {
         let v1 = create_multisig_account_seed(0x1::bcs::to_bytes<u64>(&v0));
         let (v2, v3) = 0x1::account::create_resource_account(arg0, v1);
         let v4 = v2;
-        if (!0x1::coin::is_account_registered<0x1::aptos_coin::AptosCoin>(0x1::signer::address_of(&v4))) {
+        if (0x1::coin::is_account_registered<0x1::aptos_coin::AptosCoin>(0x1::signer::address_of(&v4))) {
+        } else {
             0x1::coin::register<0x1::aptos_coin::AptosCoin>(&v4);
         };
         (v4, v3)
@@ -522,9 +538,10 @@ module 0x1::multisig_account {
     public entry fun create_with_owners_then_remove_bootstrapper(arg0: &signer, arg1: vector<address>, arg2: u64, arg3: vector<0x1::string::String>, arg4: vector<vector<u8>>) acquires MultisigAccount {
         let v0 = 0x1::signer::address_of(arg0);
         create_with_owners(arg0, arg1, arg2, arg3, arg4);
-        let v1 = 0x1::vector::empty<address>();
-        0x1::vector::push_back<address>(&mut v1, v0);
-        update_owner_schema(get_next_multisig_account_address(v0), vector[], v1, 0x1::option::none<u64>());
+        let v1 = get_next_multisig_account_address(v0);
+        let v2 = 0x1::vector::empty<address>();
+        0x1::vector::push_back<address>(&mut v2, v0);
+        update_owner_schema(v1, 0x1::vector::empty<address>(), v2, 0x1::option::none<u64>());
     }
     
     public entry fun execute_rejected_transaction(arg0: &signer, arg1: address) acquires MultisigAccount {
@@ -537,30 +554,30 @@ module 0x1::multisig_account {
         let v4 = 0x1::signer::address_of(arg0);
         if (0x1::features::multisig_v2_enhancement_feature_enabled()) {
             let (v5, v6) = vote(arg1, v3, v4);
-            let v7 = v5 && !v6;
-            if (!v7) {
+            if (v5 && !v6) {
+            } else {
                 reject_transaction(arg0, arg1, v3);
             };
         };
-        let v8 = borrow_global_mut<MultisigAccount>(arg1);
-        let (_, v10) = remove_executed_transaction(v8);
-        assert!(v10 >= v8.num_signatures_required, 0x1::error::invalid_state(10));
+        let v7 = borrow_global_mut<MultisigAccount>(arg1);
+        let (_, v9) = remove_executed_transaction(v7);
+        assert!(v9 >= v7.num_signatures_required, 0x1::error::invalid_state(10));
         if (0x1::features::module_event_migration_enabled()) {
-            let v11 = 0x1::signer::address_of(arg0);
-            let v12 = ExecuteRejectedTransaction{
+            let v10 = 0x1::signer::address_of(arg0);
+            let v11 = ExecuteRejectedTransaction{
                 multisig_account : arg1, 
                 sequence_number  : v3, 
-                num_rejections   : v10, 
-                executor         : v11,
+                num_rejections   : v9, 
+                executor         : v10,
             };
-            0x1::event::emit<ExecuteRejectedTransaction>(v12);
+            0x1::event::emit<ExecuteRejectedTransaction>(v11);
         };
-        let v13 = ExecuteRejectedTransactionEvent{
+        let v12 = ExecuteRejectedTransactionEvent{
             sequence_number : v3, 
-            num_rejections  : v10, 
+            num_rejections  : v9, 
             executor        : v4,
         };
-        0x1::event::emit_event<ExecuteRejectedTransactionEvent>(&mut v8.execute_rejected_transaction_events, v13);
+        0x1::event::emit_event<ExecuteRejectedTransactionEvent>(&mut v7.execute_rejected_transaction_events, v12);
     }
     
     public entry fun execute_rejected_transactions(arg0: &signer, arg1: address, arg2: u64) acquires MultisigAccount {
@@ -579,49 +596,50 @@ module 0x1::multisig_account {
         let v0 = last_resolved_sequence_number(arg1);
         let v1 = v0 + 1;
         let (v2, v3) = vote(arg1, v1, arg0);
-        let v4 = borrow_global_mut<MultisigAccount>(arg1);
-        let (v5, _) = remove_executed_transaction(v4);
-        let v7 = v5;
-        if (0x1::features::multisig_v2_enhancement_feature_enabled() && !(v2 && v3)) {
+        let v4 = v2 && v3;
+        let v5 = borrow_global_mut<MultisigAccount>(arg1);
+        let (v6, _) = remove_executed_transaction(v5);
+        let v8 = v6;
+        if (0x1::features::multisig_v2_enhancement_feature_enabled() && !v4) {
             if (0x1::features::module_event_migration_enabled()) {
-                let v8 = Vote{
+                let v9 = Vote{
                     multisig_account : arg1, 
                     owner            : arg0, 
                     sequence_number  : v1, 
                     approved         : true,
                 };
-                0x1::event::emit<Vote>(v8);
+                0x1::event::emit<Vote>(v9);
             };
-            v7 = v5 + 1;
-            let v9 = VoteEvent{
+            v8 = v6 + 1;
+            let v10 = VoteEvent{
                 owner           : arg0, 
                 sequence_number : v1, 
                 approved        : true,
             };
-            0x1::event::emit_event<VoteEvent>(&mut v4.vote_events, v9);
+            0x1::event::emit_event<VoteEvent>(&mut v5.vote_events, v10);
         };
-        let v10 = borrow_global_mut<MultisigAccount>(arg1);
+        let v11 = borrow_global_mut<MultisigAccount>(arg1);
         if (0x1::features::module_event_migration_enabled()) {
-            let v11 = v10.last_executed_sequence_number;
-            let v12 = TransactionExecutionFailed{
+            let v12 = v11.last_executed_sequence_number;
+            let v13 = TransactionExecutionFailed{
                 multisig_account    : arg1, 
                 executor            : arg0, 
-                sequence_number     : v11, 
+                sequence_number     : v12, 
                 transaction_payload : arg2, 
-                num_approvals       : v7, 
+                num_approvals       : v8, 
                 execution_error     : arg3,
             };
-            0x1::event::emit<TransactionExecutionFailed>(v12);
+            0x1::event::emit<TransactionExecutionFailed>(v13);
         };
-        let v13 = v10.last_executed_sequence_number;
-        let v14 = TransactionExecutionFailedEvent{
+        let v14 = v11.last_executed_sequence_number;
+        let v15 = TransactionExecutionFailedEvent{
             executor            : arg0, 
-            sequence_number     : v13, 
+            sequence_number     : v14, 
             transaction_payload : arg2, 
-            num_approvals       : v7, 
+            num_approvals       : v8, 
             execution_error     : arg3,
         };
-        0x1::event::emit_event<TransactionExecutionFailedEvent>(&mut v10.transaction_execution_failed_events, v14);
+        0x1::event::emit_event<TransactionExecutionFailedEvent>(&mut v11.transaction_execution_failed_events, v15);
     }
     
     public fun get_next_multisig_account_address(arg0: address) : address {
@@ -699,14 +717,14 @@ module 0x1::multisig_account {
             let v7 = 0x1::vector::borrow<address>(v2, v6);
             if (0x1::simple_map::contains_key<address, bool>(v5, v7)) {
                 if (*0x1::simple_map::borrow<address, bool>(v5, v7)) {
-                    v3 = v3 + 1;
-                } else {
                     v4 = v4 + 1;
+                } else {
+                    v3 = v3 + 1;
                 };
             };
             v6 = v6 + 1;
         };
-        (v3, v4)
+        (v4, v3)
     }
     
     entry fun remove_owner(arg0: &signer, arg1: address) acquires MultisigAccount {
@@ -716,54 +734,56 @@ module 0x1::multisig_account {
     }
     
     entry fun remove_owners(arg0: &signer, arg1: vector<address>) acquires MultisigAccount {
-        update_owner_schema(0x1::signer::address_of(arg0), vector[], arg1, 0x1::option::none<u64>());
+        let v0 = 0x1::vector::empty<address>();
+        update_owner_schema(0x1::signer::address_of(arg0), v0, arg1, 0x1::option::none<u64>());
     }
     
     fun successful_transaction_execution_cleanup(arg0: address, arg1: address, arg2: vector<u8>) acquires MultisigAccount {
         let v0 = last_resolved_sequence_number(arg1);
         let v1 = v0 + 1;
         let (v2, v3) = vote(arg1, v1, arg0);
-        let v4 = borrow_global_mut<MultisigAccount>(arg1);
-        let (v5, _) = remove_executed_transaction(v4);
-        let v7 = v5;
-        if (0x1::features::multisig_v2_enhancement_feature_enabled() && !(v2 && v3)) {
+        let v4 = v2 && v3;
+        let v5 = borrow_global_mut<MultisigAccount>(arg1);
+        let (v6, _) = remove_executed_transaction(v5);
+        let v8 = v6;
+        if (0x1::features::multisig_v2_enhancement_feature_enabled() && !v4) {
             if (0x1::features::module_event_migration_enabled()) {
-                let v8 = Vote{
+                let v9 = Vote{
                     multisig_account : arg1, 
                     owner            : arg0, 
                     sequence_number  : v1, 
                     approved         : true,
                 };
-                0x1::event::emit<Vote>(v8);
+                0x1::event::emit<Vote>(v9);
             };
-            v7 = v5 + 1;
-            let v9 = VoteEvent{
+            v8 = v6 + 1;
+            let v10 = VoteEvent{
                 owner           : arg0, 
                 sequence_number : v1, 
                 approved        : true,
             };
-            0x1::event::emit_event<VoteEvent>(&mut v4.vote_events, v9);
+            0x1::event::emit_event<VoteEvent>(&mut v5.vote_events, v10);
         };
-        let v10 = borrow_global_mut<MultisigAccount>(arg1);
+        let v11 = borrow_global_mut<MultisigAccount>(arg1);
         if (0x1::features::module_event_migration_enabled()) {
-            let v11 = v10.last_executed_sequence_number;
-            let v12 = TransactionExecutionSucceeded{
+            let v12 = v11.last_executed_sequence_number;
+            let v13 = TransactionExecutionSucceeded{
                 multisig_account    : arg1, 
                 executor            : arg0, 
-                sequence_number     : v11, 
+                sequence_number     : v12, 
                 transaction_payload : arg2, 
-                num_approvals       : v7,
+                num_approvals       : v8,
             };
-            0x1::event::emit<TransactionExecutionSucceeded>(v12);
+            0x1::event::emit<TransactionExecutionSucceeded>(v13);
         };
-        let v13 = v10.last_executed_sequence_number;
-        let v14 = TransactionExecutionSucceededEvent{
+        let v14 = v11.last_executed_sequence_number;
+        let v15 = TransactionExecutionSucceededEvent{
             executor            : arg0, 
-            sequence_number     : v13, 
+            sequence_number     : v14, 
             transaction_payload : arg2, 
-            num_approvals       : v7,
+            num_approvals       : v8,
         };
-        0x1::event::emit_event<TransactionExecutionSucceededEvent>(&mut v10.execute_transaction_events, v14);
+        0x1::event::emit_event<TransactionExecutionSucceededEvent>(&mut v11.execute_transaction_events, v15);
     }
     
     entry fun swap_owner(arg0: &signer, arg1: address, arg2: address) acquires MultisigAccount {
@@ -827,73 +847,76 @@ module 0x1::multisig_account {
         let v1 = &arg1;
         let v2 = 0;
         while (v2 < 0x1::vector::length<address>(v1)) {
-            let v3 = !0x1::vector::contains<address>(&arg2, 0x1::vector::borrow<address>(v1, v2));
-            assert!(v3, 0x1::error::invalid_argument(18));
+            if (0x1::vector::contains<address>(&arg2, 0x1::vector::borrow<address>(v1, v2))) {
+                abort 0x1::error::invalid_argument(18)
+            };
             v2 = v2 + 1;
         };
         if (0x1::vector::length<address>(&arg1) > 0) {
             0x1::vector::append<address>(&mut v0.owners, arg1);
             validate_owners(&v0.owners, arg0);
             if (0x1::features::module_event_migration_enabled()) {
-                let v4 = AddOwners{
+                let v3 = AddOwners{
                     multisig_account : arg0, 
                     owners_added     : arg1,
                 };
-                0x1::event::emit<AddOwners>(v4);
+                0x1::event::emit<AddOwners>(v3);
             };
-            let v5 = AddOwnersEvent{owners_added: arg1};
-            0x1::event::emit_event<AddOwnersEvent>(&mut v0.add_owners_events, v5);
+            let v4 = AddOwnersEvent{owners_added: arg1};
+            0x1::event::emit_event<AddOwnersEvent>(&mut v0.add_owners_events, v4);
         };
         if (0x1::vector::length<address>(&arg2) > 0) {
-            let v6 = &mut v0.owners;
-            let v7 = vector[];
-            let v8 = &arg2;
-            let v9 = 0;
-            while (v9 < 0x1::vector::length<address>(v8)) {
-                let (v10, v11) = 0x1::vector::index_of<address>(v6, 0x1::vector::borrow<address>(v8, v9));
-                if (v10) {
-                    0x1::vector::push_back<address>(&mut v7, 0x1::vector::swap_remove<address>(v6, v11));
+            let v5 = &mut v0.owners;
+            let v6 = 0x1::vector::empty<address>();
+            let v7 = &arg2;
+            v2 = 0;
+            while (v2 < 0x1::vector::length<address>(v7)) {
+                let (v8, v9) = 0x1::vector::index_of<address>(v5, 0x1::vector::borrow<address>(v7, v2));
+                if (v8) {
+                    0x1::vector::push_back<address>(&mut v6, 0x1::vector::swap_remove<address>(v5, v9));
                 };
-                v9 = v9 + 1;
+                v2 = v2 + 1;
             };
-            if (0x1::vector::length<address>(&v7) > 0) {
+            if (0x1::vector::length<address>(&v6) > 0) {
                 if (0x1::features::module_event_migration_enabled()) {
-                    let v12 = RemoveOwners{
+                    let v10 = RemoveOwners{
                         multisig_account : arg0, 
-                        owners_removed   : v7,
+                        owners_removed   : v6,
                     };
-                    0x1::event::emit<RemoveOwners>(v12);
+                    0x1::event::emit<RemoveOwners>(v10);
                 };
-                let v13 = RemoveOwnersEvent{owners_removed: v7};
-                0x1::event::emit_event<RemoveOwnersEvent>(&mut v0.remove_owners_events, v13);
+                let v11 = RemoveOwnersEvent{owners_removed: v6};
+                0x1::event::emit_event<RemoveOwnersEvent>(&mut v0.remove_owners_events, v11);
             };
         };
         if (0x1::option::is_some<u64>(&arg3)) {
-            let v14 = 0x1::option::extract<u64>(&mut arg3);
-            assert!(v14 > 0, 0x1::error::invalid_argument(11));
-            let v15 = v0.num_signatures_required;
-            if (v14 != v15) {
-                v0.num_signatures_required = v14;
+            let v12 = 0x1::option::extract<u64>(&mut arg3);
+            assert!(v12 > 0, 0x1::error::invalid_argument(11));
+            let v13 = v0.num_signatures_required;
+            if (v12 != v13) {
+                v0.num_signatures_required = v12;
                 if (0x1::features::module_event_migration_enabled()) {
-                    let v16 = UpdateSignaturesRequired{
+                    let v14 = UpdateSignaturesRequired{
                         multisig_account            : arg0, 
-                        old_num_signatures_required : v15, 
-                        new_num_signatures_required : v14,
+                        old_num_signatures_required : v13, 
+                        new_num_signatures_required : v12,
                     };
-                    0x1::event::emit<UpdateSignaturesRequired>(v16);
+                    0x1::event::emit<UpdateSignaturesRequired>(v14);
                 };
-                let v17 = UpdateSignaturesRequiredEvent{
-                    old_num_signatures_required : v15, 
-                    new_num_signatures_required : v14,
+                let v15 = UpdateSignaturesRequiredEvent{
+                    old_num_signatures_required : v13, 
+                    new_num_signatures_required : v12,
                 };
-                0x1::event::emit_event<UpdateSignaturesRequiredEvent>(&mut v0.update_signature_required_events, v17);
+                0x1::event::emit_event<UpdateSignaturesRequiredEvent>(&mut v0.update_signature_required_events, v15);
             };
         };
         assert!(0x1::vector::length<address>(&v0.owners) >= v0.num_signatures_required, 0x1::error::invalid_state(5));
     }
     
     entry fun update_signatures_required(arg0: &signer, arg1: u64) acquires MultisigAccount {
-        update_owner_schema(0x1::signer::address_of(arg0), vector[], vector[], 0x1::option::some<u64>(arg1));
+        let v0 = 0x1::vector::empty<address>();
+        let v1 = 0x1::vector::empty<address>();
+        update_owner_schema(0x1::signer::address_of(arg0), v0, v1, 0x1::option::some<u64>(arg1));
     }
     
     fun validate_multisig_transaction(arg0: &signer, arg1: address, arg2: vector<u8>) acquires MultisigAccount {
@@ -917,19 +940,26 @@ module 0x1::multisig_account {
             assert!(v7, 0x1::error::invalid_argument(2008));
         };
         let v8 = 0x1::features::abort_if_multisig_payload_mismatch_enabled();
-        if (v8 && 0x1::option::is_some<vector<u8>>(&v6.payload) && !0x1::vector::is_empty<u8>(&arg2)) {
+        if (v8 && 0x1::option::is_some<vector<u8>>(&v6.payload)) {
+            v9 = !0x1::vector::is_empty<u8>(&arg2);
+        } else {
+            v9 = false;
+        };
+        if (v9) {
             assert!(arg2 == *0x1::option::borrow<vector<u8>>(&v6.payload), 0x1::error::invalid_argument(2010));
         };
     }
     
     fun validate_owners(arg0: &vector<address>, arg1: address) {
-        let v0 = vector[];
+        let v0 = 0x1::vector::empty<address>();
         let v1 = 0;
         while (v1 < 0x1::vector::length<address>(arg0)) {
             let v2 = *0x1::vector::borrow<address>(arg0, v1);
             assert!(v2 != arg1, 0x1::error::invalid_argument(13));
             let (v3, _) = 0x1::vector::index_of<address>(&v0, &v2);
-            assert!(!v3, 0x1::error::invalid_argument(1));
+            if (v3) {
+                abort 0x1::error::invalid_argument(1)
+            };
             0x1::vector::push_back<address>(&mut v0, v2);
             v1 = v1 + 1;
         };
@@ -951,10 +981,9 @@ module 0x1::multisig_account {
     
     public entry fun vote_transactions(arg0: &signer, arg1: address, arg2: u64, arg3: u64, arg4: bool) acquires MultisigAccount {
         assert!(0x1::features::multisig_v2_enhancement_feature_enabled(), 0x1::error::invalid_state(20));
-        let v0 = arg2;
-        while (v0 <= arg3) {
-            vote_transanction(arg0, arg1, v0, arg4);
-            v0 = v0 + 1;
+        while (arg2 <= arg3) {
+            vote_transanction(arg0, arg1, arg2, arg4);
+            arg2 = arg2 + 1;
         };
     }
     
@@ -989,5 +1018,5 @@ module 0x1::multisig_account {
         0x1::event::emit_event<VoteEvent>(&mut v0.vote_events, v6);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

@@ -56,5 +56,5 @@ module 0x1::aggregator_v2 {
     
     native public fun try_add<T0>(arg0: &mut Aggregator<T0>, arg1: T0) : bool;
     native public fun try_sub<T0>(arg0: &mut Aggregator<T0>, arg1: T0) : bool;
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

@@ -32,18 +32,18 @@ module 0x1::math128 {
         } else {
             arg0 = arg0 << 32 - v0;
         };
-        let v1 = 0;
-        let v2 = 2147483648;
-        while (v2 != 0) {
+        let v1 = 2147483648;
+        let v2 = 0;
+        while (v1 != 0) {
             let v3 = arg0 * arg0 >> 32;
             arg0 = v3;
             if (v3 >= 8589934592) {
-                v1 = v1 + v2;
+                v2 = v2 + v1;
                 arg0 = v3 >> 1;
             };
-            v2 = v2 >> 1;
+            v1 = v1 >> 1;
         };
-        0x1::fixed_point32::create_from_raw_value(((v0 as u64) << 32) + v1)
+        0x1::fixed_point32::create_from_raw_value(((v0 as u64) << 32) + v2)
     }
     
     public fun log2_64(arg0: u128) : 0x1::fixed_point64::FixedPoint64 {
@@ -53,18 +53,18 @@ module 0x1::math128 {
         } else {
             arg0 = arg0 << 63 - v0;
         };
-        let v1 = 0;
-        let v2 = 9223372036854775808;
-        while (v2 != 0) {
+        let v1 = 9223372036854775808;
+        let v2 = 0;
+        while (v1 != 0) {
             let v3 = arg0 * arg0 >> 63;
             arg0 = v3;
             if (v3 >= 18446744073709551616) {
-                v1 = v1 + v2;
+                v2 = v2 + v1;
                 arg0 = v3 >> 1;
             };
-            v2 = v2 >> 1;
+            v1 = v1 >> 1;
         };
-        0x1::fixed_point64::create_from_raw_value(((v0 as u128) << 64) + v1)
+        0x1::fixed_point64::create_from_raw_value(((v0 as u128) << 64) + v2)
     }
     
     public fun max(arg0: u128, arg1: u128) : u128 {
@@ -112,5 +112,5 @@ module 0x1::math128 {
         min(v5, arg0 / v5)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

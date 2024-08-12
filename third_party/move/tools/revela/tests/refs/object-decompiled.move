@@ -95,24 +95,24 @@ module 0x1::object {
         let v2 = 0x1::create_signer::create_signer(v1);
         let v3 = TombStone{original_owner: v0};
         move_to<TombStone>(&v2, v3);
-        let v4 = @0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
-        let v5 = borrow_global_mut<ObjectCore>(v1);
-        if (v5.owner != v4) {
+        let v4 = borrow_global_mut<ObjectCore>(v1);
+        if (v4.owner != @0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff) {
             if (0x1::features::module_event_migration_enabled()) {
-                let v6 = Transfer{
+                let v5 = Transfer{
                     object : v1, 
-                    from   : v5.owner, 
-                    to     : v4,
+                    from   : v4.owner, 
+                    to     : @0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff,
                 };
-                0x1::event::emit<Transfer>(v6);
+                0x1::event::emit<Transfer>(v5);
             };
+            let v6 = v4.owner;
             let v7 = TransferEvent{
                 object : v1, 
-                from   : v5.owner, 
-                to     : v4,
+                from   : v6, 
+                to     : @0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff,
             };
-            0x1::event::emit_event<TransferEvent>(&mut v5.transfer_events, v7);
-            v5.owner = v4;
+            0x1::event::emit_event<TransferEvent>(&mut v4.transfer_events, v7);
+            v4.owner = @0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
         };
     }
     
@@ -163,7 +163,9 @@ module 0x1::object {
     }
     
     fun create_object_internal(arg0: address, arg1: address, arg2: bool) : ConstructorRef {
-        assert!(!exists<ObjectCore>(arg1), 0x1::error::already_exists(1));
+        if (exists<ObjectCore>(arg1)) {
+            abort 0x1::error::already_exists(1)
+        };
         let v0 = 0x1::create_signer::create_signer(arg1);
         let v1 = 1125899906842624;
         let v2 = 0x1::event::new_event_handle<TransferEvent>(0x1::guid::create(arg1, &mut v1));
@@ -222,7 +224,9 @@ module 0x1::object {
     }
     
     public fun enable_ungated_transfer(arg0: &TransferRef) acquires ObjectCore {
-        assert!(!exists<Untransferable>(arg0.self), 0x1::error::permission_denied(9));
+        if (exists<Untransferable>(arg0.self)) {
+            abort 0x1::error::permission_denied(9)
+        };
         borrow_global_mut<ObjectCore>(arg0.self).allow_ungated_transfer = true;
     }
     
@@ -241,7 +245,9 @@ module 0x1::object {
     }
     
     public fun generate_linear_transfer_ref(arg0: &TransferRef) : LinearTransferRef acquires ObjectCore {
-        assert!(!exists<Untransferable>(arg0.self), 0x1::error::permission_denied(9));
+        if (exists<Untransferable>(arg0.self)) {
+            abort 0x1::error::permission_denied(9)
+        };
         let v0 = Object<ObjectCore>{inner: arg0.self};
         let v1 = owner<ObjectCore>(v0);
         LinearTransferRef{
@@ -259,7 +265,9 @@ module 0x1::object {
     }
     
     public fun generate_transfer_ref(arg0: &ConstructorRef) : TransferRef {
-        assert!(!exists<Untransferable>(arg0.self), 0x1::error::permission_denied(9));
+        if (exists<Untransferable>(arg0.self)) {
+            abort 0x1::error::permission_denied(9)
+        };
         TransferRef{self: arg0.self}
     }
     
@@ -307,17 +315,18 @@ module 0x1::object {
             return true
         };
         assert!(exists<ObjectCore>(v0), 0x1::error::not_found(2));
-        let v1 = borrow_global<ObjectCore>(v0).owner;
-        let v2 = 0;
-        while (arg1 != v1) {
-            let v3 = v2 + 1;
-            v2 = v3;
+        let v1 = 0;
+        let v2 = borrow_global<ObjectCore>(v0).owner;
+        while (arg1 != v2) {
+            let v3 = v1 + 1;
+            v1 = v3;
             assert!(v3 < 8, 0x1::error::out_of_range(6));
-            if (!exists<ObjectCore>(v1)) {
-                return false
+            if (exists<ObjectCore>(v2)) {
+                let v4 = &borrow_global<ObjectCore>(v2).owner;
+                v2 = *v4;
+                continue
             };
-            let v4 = &borrow_global<ObjectCore>(v1).owner;
-            v1 = *v4;
+            return false
         };
         true
     }
@@ -373,7 +382,9 @@ module 0x1::object {
     }
     
     public fun transfer_with_ref(arg0: LinearTransferRef, arg1: address) acquires ObjectCore, TombStone {
-        assert!(!exists<Untransferable>(arg0.self), 0x1::error::permission_denied(9));
+        if (exists<Untransferable>(arg0.self)) {
+            abort 0x1::error::permission_denied(9)
+        };
         if (exists<TombStone>(arg0.self)) {
             let TombStone {  } = move_from<TombStone>(arg0.self);
         };
@@ -430,18 +441,18 @@ module 0x1::object {
         assert!(exists<ObjectCore>(arg1), 0x1::error::not_found(2));
         let v0 = borrow_global<ObjectCore>(arg1);
         assert!(v0.allow_ungated_transfer, 0x1::error::permission_denied(3));
-        let v1 = v0.owner;
-        let v2 = 0;
-        while (arg0 != v1) {
-            let v3 = v2 + 1;
-            v2 = v3;
-            assert!(v3 < 8, 0x1::error::out_of_range(6));
-            assert!(exists<ObjectCore>(v1), 0x1::error::permission_denied(4));
-            let v4 = borrow_global<ObjectCore>(v1);
-            assert!(v4.allow_ungated_transfer, 0x1::error::permission_denied(3));
-            v1 = v4.owner;
+        let v1 = 0;
+        arg1 = v0.owner;
+        while (arg0 != arg1) {
+            let v2 = v1 + 1;
+            v1 = v2;
+            assert!(v2 < 8, 0x1::error::out_of_range(6));
+            assert!(exists<ObjectCore>(arg1), 0x1::error::permission_denied(4));
+            let v3 = borrow_global<ObjectCore>(arg1);
+            assert!(v3.allow_ungated_transfer, 0x1::error::permission_denied(3));
+            arg1 = v3.owner;
         };
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

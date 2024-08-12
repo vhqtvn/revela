@@ -33,18 +33,19 @@ module 0x1::math64 {
             arg0 << 32 - v0
         };
         let v2 = (v1 as u128);
-        let v3 = 0;
-        let v4 = 2147483648;
-        while (v4 != 0) {
-            let v5 = v2 * v2 >> 32;
-            v2 = v5;
-            if (v5 >= 8589934592) {
-                v3 = v3 + v4;
-                v2 = v5 >> 1;
+        v1 = 2147483648;
+        arg0 = 0;
+        let v3 = v2;
+        while (v1 != 0) {
+            let v4 = v3 * v3 >> 32;
+            v3 = v4;
+            if (v4 >= 8589934592) {
+                arg0 = arg0 + v1;
+                v3 = v4 >> 1;
             };
-            v4 = v4 >> 1;
+            v1 = v1 >> 1;
         };
-        0x1::fixed_point32::create_from_raw_value(((v0 as u64) << 32) + v3)
+        0x1::fixed_point32::create_from_raw_value(((v0 as u64) << 32) + arg0)
     }
     
     public fun max(arg0: u64, arg1: u64) : u64 {
@@ -91,5 +92,5 @@ module 0x1::math64 {
         min(v4, arg0 / v4)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

@@ -19,13 +19,15 @@ module 0x1::aptos_account {
     }
     
     public entry fun transfer(arg0: &signer, arg1: address, arg2: u64) {
-        if (!0x1::account::exists_at(arg1)) {
+        if (0x1::account::exists_at(arg1)) {
+        } else {
             create_account(arg1);
         };
         if (0x1::features::operations_default_to_fa_apt_store_enabled()) {
             fungible_transfer_only(arg0, arg1, arg2);
         } else {
-            if (!0x1::coin::is_account_registered<0x1::aptos_coin::AptosCoin>(arg1)) {
+            if (0x1::coin::is_account_registered<0x1::aptos_coin::AptosCoin>(arg1)) {
+            } else {
                 let v0 = 0x1::create_signer::create_signer(arg1);
                 0x1::coin::register<0x1::aptos_coin::AptosCoin>(&v0);
             };
@@ -75,7 +77,7 @@ module 0x1::aptos_account {
     
     public fun can_receive_direct_coin_transfers(arg0: address) : bool acquires DirectTransferConfig {
         let v0 = exists<DirectTransferConfig>(arg0);
-        !v0 || borrow_global<DirectTransferConfig>(arg0).allow_arbitrary_coin_transfers
+        v0 && borrow_global<DirectTransferConfig>(arg0).allow_arbitrary_coin_transfers || true
     }
     
     public fun deposit_coins<T0>(arg0: address, arg1: 0x1::coin::Coin<T0>) acquires DirectTransferConfig {
@@ -122,7 +124,8 @@ module 0x1::aptos_account {
             if (0x1::fungible_asset::store_exists(0x1::object::create_user_derived_object_address(v0, @0xa))) {
             } else {
                 let v1 = 0x1::object::address_to_object<0x1::fungible_asset::Metadata>(@0xa);
-                let _ = 0x1::primary_fungible_store::create_primary_store<0x1::fungible_asset::Metadata>(v0, v1);
+                let v2 = 0x1::primary_fungible_store::create_primary_store<0x1::fungible_asset::Metadata>(v0, v1);
+                0x1::object::object_address<0x1::fungible_asset::FungibleStore>(&v2);
             };
         } else {
             0x1::coin::register<0x1::aptos_coin::AptosCoin>(arg0);
@@ -170,5 +173,5 @@ module 0x1::aptos_account {
         deposit_coins<T0>(arg1, 0x1::coin::withdraw<T0>(arg0, arg2));
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

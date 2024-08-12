@@ -127,16 +127,17 @@ module 0x1337::token_transfers {
     
     public fun offer(arg0: &signer, arg1: address, arg2: 0x1337::token::TokenId, arg3: u64) acquires PendingClaims {
         let v0 = 0x1::signer::address_of(arg0);
-        if (!exists<PendingClaims>(v0)) {
+        if (exists<PendingClaims>(v0)) {
+        } else {
             initialize_token_transfers(arg0);
         };
         let v1 = &mut borrow_global_mut<PendingClaims>(v0).pending_claims;
         let v2 = create_token_offer_id(arg1, arg2);
         let v3 = 0x1337::token::withdraw_token(arg0, arg2, arg3);
-        if (!0x1::table::contains<TokenOfferId, 0x1337::token::Token>(v1, v2)) {
-            0x1::table::add<TokenOfferId, 0x1337::token::Token>(v1, v2, v3);
-        } else {
+        if (0x1::table::contains<TokenOfferId, 0x1337::token::Token>(v1, v2)) {
             0x1337::token::merge(0x1::table::borrow_mut<TokenOfferId, 0x1337::token::Token>(v1, v2), v3);
+        } else {
+            0x1::table::add<TokenOfferId, 0x1337::token::Token>(v1, v2, v3);
         };
         if (0x1::features::module_event_migration_enabled()) {
             let v4 = TokenOffer{
@@ -158,5 +159,5 @@ module 0x1337::token_transfers {
         offer(&arg0, arg1, 0x1337::token::create_token_id_raw(arg2, arg3, arg4, arg5), arg6);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

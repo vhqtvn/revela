@@ -1,4 +1,32 @@
 module 0x1::delegation_pool {
+    struct CreateProposal has drop, store {
+        proposal_id: u64,
+        voter: address,
+        delegation_pool: address,
+    }
+    
+    struct CreateProposalEvent has drop, store {
+        proposal_id: u64,
+        voter: address,
+        delegation_pool: address,
+    }
+    
+    struct Vote has drop, store {
+        voter: address,
+        proposal_id: u64,
+        delegation_pool: address,
+        num_votes: u64,
+        should_pass: bool,
+    }
+    
+    struct VoteEvent has drop, store {
+        voter: address,
+        proposal_id: u64,
+        delegation_pool: address,
+        num_votes: u64,
+        should_pass: bool,
+    }
+    
     struct AddStake has drop, store {
         pool_address: address,
         delegator_address: address,
@@ -11,6 +39,42 @@ module 0x1::delegation_pool {
         delegator_address: address,
         amount_added: u64,
         add_stake_fee: u64,
+    }
+    
+    struct ReactivateStake has drop, store {
+        pool_address: address,
+        delegator_address: address,
+        amount_reactivated: u64,
+    }
+    
+    struct ReactivateStakeEvent has drop, store {
+        pool_address: address,
+        delegator_address: address,
+        amount_reactivated: u64,
+    }
+    
+    struct UnlockStake has drop, store {
+        pool_address: address,
+        delegator_address: address,
+        amount_unlocked: u64,
+    }
+    
+    struct UnlockStakeEvent has drop, store {
+        pool_address: address,
+        delegator_address: address,
+        amount_unlocked: u64,
+    }
+    
+    struct WithdrawStake has drop, store {
+        pool_address: address,
+        delegator_address: address,
+        amount_withdrawn: u64,
+    }
+    
+    struct WithdrawStakeEvent has drop, store {
+        pool_address: address,
+        delegator_address: address,
+        amount_withdrawn: u64,
     }
     
     struct AllowlistDelegator has drop, store {
@@ -26,18 +90,6 @@ module 0x1::delegation_pool {
         pool_address: address,
         owner: address,
         commission_percentage_next_lockup_cycle: u64,
-    }
-    
-    struct CreateProposal has drop, store {
-        proposal_id: u64,
-        voter: address,
-        delegation_pool: address,
-    }
-    
-    struct CreateProposalEvent has drop, store {
-        proposal_id: u64,
-        voter: address,
-        delegation_pool: address,
     }
     
     struct DelegateVotingPower has drop, store {
@@ -129,18 +181,6 @@ module 0x1::delegation_pool {
         index: u64,
     }
     
-    struct ReactivateStake has drop, store {
-        pool_address: address,
-        delegator_address: address,
-        amount_reactivated: u64,
-    }
-    
-    struct ReactivateStakeEvent has drop, store {
-        pool_address: address,
-        delegator_address: address,
-        amount_reactivated: u64,
-    }
-    
     struct RemoveDelegatorFromAllowlist has drop, store {
         pool_address: address,
         delegator_address: address,
@@ -152,55 +192,15 @@ module 0x1::delegation_pool {
         new_beneficiary: address,
     }
     
-    struct UnlockStake has drop, store {
-        pool_address: address,
-        delegator_address: address,
-        amount_unlocked: u64,
-    }
-    
-    struct UnlockStakeEvent has drop, store {
-        pool_address: address,
-        delegator_address: address,
-        amount_unlocked: u64,
-    }
-    
-    struct Vote has drop, store {
-        voter: address,
-        proposal_id: u64,
-        delegation_pool: address,
-        num_votes: u64,
-        should_pass: bool,
-    }
-    
     struct VoteDelegation has copy, drop, store {
         voter: address,
         pending_voter: address,
         last_locked_until_secs: u64,
     }
     
-    struct VoteEvent has drop, store {
-        voter: address,
-        proposal_id: u64,
-        delegation_pool: address,
-        num_votes: u64,
-        should_pass: bool,
-    }
-    
     struct VotingRecordKey has copy, drop, store {
         voter: address,
         proposal_id: u64,
-    }
-    
-    struct WithdrawStake has drop, store {
-        pool_address: address,
-        delegator_address: address,
-        amount_withdrawn: u64,
-    }
-    
-    struct WithdrawStakeEvent has drop, store {
-        pool_address: address,
-        delegator_address: address,
-        amount_withdrawn: u64,
     }
     
     public fun partial_governance_voting_enabled(arg0: address) : bool {
@@ -245,16 +245,16 @@ module 0x1::delegation_pool {
         let v0 = borrow_global<DelegationPool>(arg0);
         let (v1, v2, _, v4, v5) = calculate_stake_pool_drift(v0);
         let v6 = 0x1::pool_u64_unbound::total_shares(&v0.active_shares);
-        let v7 = v6;
-        let v8 = 0x1::pool_u64_unbound::shares(&v0.active_shares, arg1);
-        let (_, _, v11, _) = 0x1::stake::get_stake(arg0);
-        if (v11 == 0) {
-            v7 = v6 - 0x1::pool_u64_unbound::shares(&v0.active_shares, @0x0);
+        let (_, _, v9, _) = 0x1::stake::get_stake(arg0);
+        let v11 = 0x1::pool_u64_unbound::shares(&v0.active_shares, arg1);
+        let v12 = v6;
+        if (v9 == 0) {
+            v12 = v6 - 0x1::pool_u64_unbound::shares(&v0.active_shares, @0x0);
             if (arg1 == @0x0) {
-                v8 = 0;
+                v11 = 0;
             };
         };
-        let v13 = 0x1::pool_u64_unbound::shares_to_amount_with_total_stats(&v0.active_shares, v8, v2 - v4, v7);
+        let v13 = 0x1::pool_u64_unbound::shares_to_amount_with_total_stats(&v0.active_shares, v11, v2 - v4, v12);
         let v14 = v13;
         let (v15, v16) = get_pending_withdrawal(arg0, arg1);
         let (v17, v18) = if (v15) {
@@ -262,18 +262,16 @@ module 0x1::delegation_pool {
         } else {
             (0, v16)
         };
-        let v19 = v18;
-        let v20 = v17;
-        let v21 = beneficiary_for_operator(0x1::stake::get_operator(arg0));
-        if (arg1 == v21) {
+        let v19 = beneficiary_for_operator(0x1::stake::get_operator(arg0));
+        if (arg1 == v19) {
             v14 = v13 + v4;
             if (v1) {
-                v20 = v17 + v5;
+                v17 = v17 + v5;
             } else {
-                v19 = v18 + v5;
+                v18 = v18 + v5;
             };
         };
-        (v14, v20, v19)
+        (v14, v17, v18)
     }
     
     public entry fun reactivate_stake(arg0: &signer, arg1: address, arg2: u64) acquires BeneficiaryForOperator, DelegationPool, DelegationPoolAllowlisting, GovernanceRecords, NextCommissionPercentage {
@@ -307,12 +305,13 @@ module 0x1::delegation_pool {
     }
     
     public entry fun set_delegated_voter(arg0: &signer, arg1: address) acquires BeneficiaryForOperator, DelegationPool, DelegationPoolOwnership, GovernanceRecords, NextCommissionPercentage {
-        let v0 = !0x1::features::delegation_pool_partial_governance_voting_enabled();
-        assert!(v0, 0x1::error::invalid_state(12));
-        let v1 = get_owned_pool_address(0x1::signer::address_of(arg0));
-        synchronize_delegation_pool(v1);
-        let v2 = retrieve_stake_pool_owner(borrow_global<DelegationPool>(v1));
-        0x1::stake::set_delegated_voter(&v2, arg1);
+        if (0x1::features::delegation_pool_partial_governance_voting_enabled()) {
+            abort 0x1::error::invalid_state(12)
+        };
+        let v0 = get_owned_pool_address(0x1::signer::address_of(arg0));
+        synchronize_delegation_pool(v0);
+        let v1 = retrieve_stake_pool_owner(borrow_global<DelegationPool>(v0));
+        0x1::stake::set_delegated_voter(&v1, arg1);
     }
     
     public entry fun set_operator(arg0: &signer, arg1: address) acquires BeneficiaryForOperator, DelegationPool, DelegationPoolOwnership, GovernanceRecords, NextCommissionPercentage {
@@ -482,21 +481,19 @@ module 0x1::delegation_pool {
         };
         let v7 = 0x1::pool_u64_unbound::total_coins(&arg0.active_shares);
         let v8 = if (v6 > v7) {
-            let v9 = 10000;
-            assert!(v9 != 0, 0x1::error::invalid_argument(4));
-            ((((v6 - v7) as u128) * (arg0.operator_commission_percentage as u128) / (v9 as u128)) as u64)
+            assert!(true, 0x1::error::invalid_argument(4));
+            ((((v6 - v7) as u128) * (arg0.operator_commission_percentage as u128) / 10000) as u64)
         } else {
             0
         };
-        let v10 = 0x1::pool_u64_unbound::total_coins(pending_inactive_shares_pool(arg0));
-        let v11 = if (v4 > v10) {
-            let v12 = 10000;
-            assert!(v12 != 0, 0x1::error::invalid_argument(4));
-            ((((v4 - v10) as u128) * (arg0.operator_commission_percentage as u128) / (v12 as u128)) as u64)
+        let v9 = 0x1::pool_u64_unbound::total_coins(pending_inactive_shares_pool(arg0));
+        let v10 = if (v4 > v9) {
+            assert!(true, 0x1::error::invalid_argument(4));
+            ((((v4 - v9) as u128) * (arg0.operator_commission_percentage as u128) / 10000) as u64)
         } else {
             0
         };
-        (v5, v6, v4, v8, v11)
+        (v5, v6, v4, v8, v10)
     }
     
     fun calculate_total_voting_power(arg0: &DelegationPool, arg1: &DelegatedVotes) : u64 {
@@ -599,11 +596,11 @@ module 0x1::delegation_pool {
     }
     
     public fun delegator_allowlisted(arg0: address, arg1: address) : bool acquires DelegationPoolAllowlisting {
-        if (!allowlisting_enabled(arg0)) {
-            return true
+        if (allowlisting_enabled(arg0)) {
+            let v0 = &mut borrow_global_mut<DelegationPoolAllowlisting>(arg0).allowlist;
+            return 0x1::smart_table::contains<address, bool>(v0, arg1)
         };
-        let v0 = &mut borrow_global_mut<DelegationPoolAllowlisting>(arg0).allowlist;
-        0x1::smart_table::contains<address, bool>(v0, arg1)
+        true
     }
     
     public entry fun disable_delegators_allowlisting(arg0: &signer) acquires DelegationPoolAllowlisting, DelegationPoolOwnership {
@@ -657,19 +654,20 @@ module 0x1::delegation_pool {
     public entry fun evict_delegator(arg0: &signer, arg1: address) acquires BeneficiaryForOperator, DelegationPool, DelegationPoolAllowlisting, DelegationPoolOwnership, GovernanceRecords, NextCommissionPercentage {
         let v0 = get_owned_pool_address(0x1::signer::address_of(arg0));
         assert_allowlisting_enabled(v0);
-        let v1 = delegator_allowlisted(v0, arg1);
-        assert!(!v1, 0x1::error::invalid_state(26));
+        if (delegator_allowlisted(v0, arg1)) {
+            abort 0x1::error::invalid_state(26)
+        };
         synchronize_delegation_pool(v0);
-        let v2 = borrow_global<DelegationPool>(v0);
-        if (get_delegator_active_shares(v2, arg1) == 0) {
+        let v1 = borrow_global<DelegationPool>(v0);
+        if (get_delegator_active_shares(v1, arg1) == 0) {
             return
         };
-        unlock_internal(arg1, v0, 0x1::pool_u64_unbound::balance(&v2.active_shares, arg1));
-        let v3 = EvictDelegator{
+        unlock_internal(arg1, v0, 0x1::pool_u64_unbound::balance(&v1.active_shares, arg1));
+        let v2 = EvictDelegator{
             pool_address      : v0, 
             delegator_address : arg1,
         };
-        0x1::event::emit<EvictDelegator>(v3);
+        0x1::event::emit<EvictDelegator>(v2);
     }
     
     fun execute_pending_withdrawal(arg0: &mut DelegationPool, arg1: address) acquires GovernanceRecords {
@@ -684,15 +682,14 @@ module 0x1::delegation_pool {
         if (0x1::stake::is_current_epoch_validator(arg0)) {
             let v1 = 0x1::staking_config::get();
             let (v2, v3) = 0x1::staking_config::get_reward_rate(&v1);
-            let v4 = if (v3 > 0) {
+            if (v3 > 0) {
                 assert_delegation_pool_exists(arg0);
-                let v5 = operator_commission_percentage(arg0);
-                let v6 = v2 * (10000 - v5);
-                (((arg1 as u128) * (v6 as u128) / ((v6 as u128) + ((v3 * 10000) as u128))) as u64)
+                let v4 = operator_commission_percentage(arg0);
+                let v5 = v2 * (10000 - v4);
+                (((arg1 as u128) * (v5 as u128) / ((v5 as u128) + ((v3 * 10000) as u128))) as u64)
             } else {
                 0
-            };
-            v4
+            }
         } else {
             0
         }
@@ -713,7 +710,7 @@ module 0x1::delegation_pool {
     
     public fun get_delegators_allowlist(arg0: address) : vector<address> acquires DelegationPoolAllowlisting {
         assert_allowlisting_enabled(arg0);
-        let v0 = vector[];
+        let v0 = 0x1::vector::empty<address>();
         let v1 = &mut borrow_global_mut<DelegationPoolAllowlisting>(arg0).allowlist;
         let v2 = 0;
         while (v2 < 0x1::smart_table::num_buckets<address, bool>(v1)) {
@@ -750,12 +747,11 @@ module 0x1::delegation_pool {
             (false, 0)
         } else {
             let v11 = 0x1::table::borrow<ObservedLockupCycle, 0x1::pool_u64_unbound::Pool>(&v0.inactive_shares, v8);
-            let (v12, v13) = if (v8.index < v0.observed_lockup_cycle.index) {
+            if (v8.index < v0.observed_lockup_cycle.index) {
                 (true, 0x1::pool_u64_unbound::balance(v11, arg1))
             } else {
                 (v1, 0x1::pool_u64_unbound::shares_to_amount_with_total_coins(v11, 0x1::pool_u64_unbound::shares(v11, arg1), v3 - v5))
-            };
-            (v12, v13)
+            }
         }
     }
     
@@ -775,7 +771,9 @@ module 0x1::delegation_pool {
     public entry fun initialize_delegation_pool(arg0: &signer, arg1: u64, arg2: vector<u8>) acquires BeneficiaryForOperator, DelegationPool, GovernanceRecords, NextCommissionPercentage {
         assert!(0x1::features::delegation_pools_enabled(), 0x1::error::invalid_state(10));
         let v0 = 0x1::signer::address_of(arg0);
-        assert!(!owner_cap_exists(v0), 0x1::error::already_exists(2));
+        if (owner_cap_exists(v0)) {
+            abort 0x1::error::already_exists(2)
+        };
         assert!(arg1 <= 10000, 0x1::error::invalid_argument(5));
         let (v1, v2) = 0x1::account::create_resource_account(arg0, create_resource_account_seed(arg2));
         let v3 = v1;
@@ -872,11 +870,12 @@ module 0x1::delegation_pool {
     }
     
     fun pending_withdrawal_exists(arg0: &DelegationPool, arg1: address) : (bool, ObservedLockupCycle) {
-        if (0x1::table::contains<address, ObservedLockupCycle>(&arg0.pending_withdrawals, arg1)) {
-            (true, *0x1::table::borrow<address, ObservedLockupCycle>(&arg0.pending_withdrawals, arg1))
+        let (v0, v1) = if (0x1::table::contains<address, ObservedLockupCycle>(&arg0.pending_withdrawals, arg1)) {
+            (*0x1::table::borrow<address, ObservedLockupCycle>(&arg0.pending_withdrawals, arg1), true)
         } else {
-            (false, olc_with_index(0))
-        }
+            (olc_with_index(0), false)
+        };
+        (v1, v0)
     }
     
     fun redeem_active_shares(arg0: &mut DelegationPool, arg1: address, arg2: u64) : u64 acquires GovernanceRecords {
@@ -906,7 +905,12 @@ module 0x1::delegation_pool {
         if (0x1::pool_u64_unbound::shares(v4, arg1) == 0) {
             0x1::table::remove<address, ObservedLockupCycle>(&mut arg0.pending_withdrawals, arg1);
         };
-        if (arg3.index < arg0.observed_lockup_cycle.index && 0x1::pool_u64_unbound::total_coins(v4) == 0) {
+        if (arg3.index < arg0.observed_lockup_cycle.index) {
+            v7 = 0x1::pool_u64_unbound::total_coins(v4) == 0;
+        } else {
+            v7 = false;
+        };
+        if (v7) {
             let v5 = arg3;
             let v6 = 0x1::table::remove<ObservedLockupCycle, 0x1::pool_u64_unbound::Pool>(&mut arg0.inactive_shares, v5);
             0x1::pool_u64_unbound::destroy_empty(v6);
@@ -917,17 +921,16 @@ module 0x1::delegation_pool {
     public entry fun remove_delegator_from_allowlist(arg0: &signer, arg1: address) acquires DelegationPoolAllowlisting, DelegationPoolOwnership {
         let v0 = get_owned_pool_address(0x1::signer::address_of(arg0));
         assert_allowlisting_enabled(v0);
-        let v1 = delegator_allowlisted(v0, arg1);
-        if (!v1) {
+        if (delegator_allowlisted(v0, arg1)) {
+            let v1 = &mut borrow_global_mut<DelegationPoolAllowlisting>(v0).allowlist;
+            0x1::smart_table::remove<address, bool>(v1, arg1);
+            let v2 = RemoveDelegatorFromAllowlist{
+                pool_address      : v0, 
+                delegator_address : arg1,
+            };
+            0x1::event::emit<RemoveDelegatorFromAllowlist>(v2);
             return
         };
-        let v2 = &mut borrow_global_mut<DelegationPoolAllowlisting>(v0).allowlist;
-        0x1::smart_table::remove<address, bool>(v2, arg1);
-        let v3 = RemoveDelegatorFromAllowlist{
-            pool_address      : v0, 
-            delegator_address : arg1,
-        };
-        0x1::event::emit<RemoveDelegatorFromAllowlist>(v3);
     }
     
     fun retrieve_stake_pool_owner(arg0: &DelegationPool) : signer {
@@ -1199,50 +1202,53 @@ module 0x1::delegation_pool {
         let (v1, v2) = pending_withdrawal_exists(arg0, arg1);
         let v3 = v2;
         let v4 = if (v1) {
-            let v5 = v3.index < arg0.observed_lockup_cycle.index || can_withdraw_pending_inactive(v0);
-            v5
+            if (v3.index < arg0.observed_lockup_cycle.index) {
+                true
+            } else {
+                can_withdraw_pending_inactive(v0)
+            }
         } else {
             false
         };
-        if (!v4) {
-            return
-        };
-        if (v3.index == arg0.observed_lockup_cycle.index) {
-            arg2 = coins_to_redeem_to_ensure_min_stake(pending_inactive_shares_pool(arg0), arg1, arg2);
-        };
-        let v6 = redeem_inactive_shares(arg0, arg1, arg2, v3);
-        let v7 = retrieve_stake_pool_owner(arg0);
-        let v8 = &v7;
-        if (can_withdraw_pending_inactive(v0)) {
-            let (_, _, _, v12) = 0x1::stake::get_stake(v0);
-            let v13 = v12;
+        if (v4) {
             if (v3.index == arg0.observed_lockup_cycle.index) {
-                v13 = v12 - v6;
+                arg2 = coins_to_redeem_to_ensure_min_stake(pending_inactive_shares_pool(arg0), arg1, arg2);
             };
-            0x1::stake::reactivate_stake(v8, v13);
-            0x1::stake::withdraw(v8, v6);
-            0x1::stake::unlock(v8, v13);
-        } else {
-            0x1::stake::withdraw(v8, v6);
-        };
-        0x1::aptos_account::transfer(v8, arg1, v6);
-        let (_, v15, _, _) = 0x1::stake::get_stake(v0);
-        arg0.total_coins_inactive = v15;
-        if (0x1::features::module_event_migration_enabled()) {
-            let v18 = WithdrawStake{
+            let v5 = redeem_inactive_shares(arg0, arg1, arg2, v3);
+            let v6 = retrieve_stake_pool_owner(arg0);
+            let v7 = &v6;
+            if (can_withdraw_pending_inactive(v0)) {
+                let (_, _, _, v11) = 0x1::stake::get_stake(v0);
+                let v12 = v11;
+                if (v3.index == arg0.observed_lockup_cycle.index) {
+                    v12 = v11 - v5;
+                };
+                0x1::stake::reactivate_stake(v7, v12);
+                0x1::stake::withdraw(v7, v5);
+                0x1::stake::unlock(v7, v12);
+            } else {
+                0x1::stake::withdraw(v7, v5);
+            };
+            0x1::aptos_account::transfer(v7, arg1, v5);
+            let (_, v14, _, _) = 0x1::stake::get_stake(v0);
+            arg0.total_coins_inactive = v14;
+            if (0x1::features::module_event_migration_enabled()) {
+                let v17 = WithdrawStake{
+                    pool_address      : v0, 
+                    delegator_address : arg1, 
+                    amount_withdrawn  : v5,
+                };
+                0x1::event::emit<WithdrawStake>(v17);
+            };
+            let v18 = WithdrawStakeEvent{
                 pool_address      : v0, 
                 delegator_address : arg1, 
-                amount_withdrawn  : v6,
+                amount_withdrawn  : v5,
             };
-            0x1::event::emit<WithdrawStake>(v18);
+            0x1::event::emit_event<WithdrawStakeEvent>(&mut arg0.withdraw_stake_events, v18);
+            return
         };
-        let v19 = WithdrawStakeEvent{
-            pool_address      : v0, 
-            delegator_address : arg1, 
-            amount_withdrawn  : v6,
-        };
-        0x1::event::emit_event<WithdrawStakeEvent>(&mut arg0.withdraw_stake_events, v19);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

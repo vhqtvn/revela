@@ -53,7 +53,7 @@ module 0x1::vector {
     native public fun push_back<T0>(arg0: &mut vector<T0>, arg1: T0);
     public fun range_with_step(arg0: u64, arg1: u64, arg2: u64) : vector<u64> {
         assert!(arg2 > 0, 131075);
-        let v0 = vector[];
+        let v0 = empty<u64>();
         while (arg0 < arg1) {
             push_back<u64>(&mut v0, arg0);
             arg0 = arg0 + arg2;
@@ -141,7 +141,9 @@ module 0x1::vector {
     
     native public fun swap<T0>(arg0: &mut vector<T0>, arg1: u64, arg2: u64);
     public fun swap_remove<T0>(arg0: &mut vector<T0>, arg1: u64) : T0 {
-        assert!(!is_empty<T0>(arg0), 131072);
+        if (is_empty<T0>(arg0)) {
+            abort 131072
+        };
         swap<T0>(arg0, arg1, length<T0>(arg0) - 1);
         pop_back<T0>(arg0)
     }
@@ -164,5 +166,5 @@ module 0x1::vector {
         v2
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

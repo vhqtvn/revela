@@ -155,5 +155,5 @@ module 0x1::ristretto255_elgamal {
         0x1::ristretto255::point_decompress(&arg0.point)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

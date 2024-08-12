@@ -3,7 +3,6 @@ mod utils;
 #[cfg(test)]
 mod test {
     use super::utils;
-    use move_compiler::Flags;
     use revela::decompiler::Decompiler;
 
     #[test]
@@ -14,8 +13,9 @@ mod test {
             .join("tests")
             .join("refs");
 
-        utils::tmp_project(vec![], |tmp_files| {
-            (src_scripts, src_modules) = utils::run_compiler(tmp_files, Flags::empty(), true);
+        utils::tmp_project(vec![], |project_root, tmp_files| {
+            (src_scripts, src_modules) =
+                utils::run_compiler(project_root, tmp_files, true);
 
             assert_eq!(src_scripts.len(), 0, "Stdlib should have no script");
 

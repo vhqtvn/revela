@@ -134,5 +134,5 @@ module 0x1::primary_fungible_store {
         0x1::fungible_asset::store_exists(primary_store_address<T0>(arg0, arg1))
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

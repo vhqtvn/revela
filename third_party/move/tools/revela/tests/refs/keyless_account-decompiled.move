@@ -10,16 +10,16 @@ module 0x1::keyless_account {
         max_jwt_header_b64_bytes: u32,
     }
     
+    struct Group {
+        dummy_field: bool,
+    }
+    
     struct Groth16VerificationKey has drop, store, key {
         alpha_g1: vector<u8>,
         beta_g2: vector<u8>,
         gamma_g2: vector<u8>,
         delta_g2: vector<u8>,
         gamma_abc_g1: vector<vector<u8>>,
-    }
-    
-    struct Group {
-        dummy_field: bool,
     }
     
     public fun add_override_aud(arg0: &signer, arg1: 0x1::string::String) acquires Configuration {
@@ -36,9 +36,8 @@ module 0x1::keyless_account {
         } else {
             *borrow_global<Configuration>(0x1::signer::address_of(arg0))
         };
-        let v1 = v0;
-        0x1::vector::push_back<0x1::string::String>(&mut v1.override_aud_vals, arg1);
-        set_configuration_for_next_epoch(arg0, v1);
+        0x1::vector::push_back<0x1::string::String>(&mut v0.override_aud_vals, arg1);
+        set_configuration_for_next_epoch(arg0, v0);
     }
     
     public fun new_configuration(arg0: vector<0x1::string::String>, arg1: u16, arg2: u64, arg3: 0x1::option::Option<vector<u8>>, arg4: u16, arg5: u16, arg6: u16, arg7: u32) : Configuration {
@@ -97,9 +96,8 @@ module 0x1::keyless_account {
         } else {
             *borrow_global<Configuration>(0x1::signer::address_of(arg0))
         };
-        let v1 = v0;
-        v1.override_aud_vals = 0x1::vector::empty<0x1::string::String>();
-        set_configuration_for_next_epoch(arg0, v1);
+        v0.override_aud_vals = 0x1::vector::empty<0x1::string::String>();
+        set_configuration_for_next_epoch(arg0, v0);
     }
     
     public fun set_configuration_for_next_epoch(arg0: &signer, arg1: Configuration) {
@@ -137,9 +135,8 @@ module 0x1::keyless_account {
         } else {
             *borrow_global<Configuration>(0x1::signer::address_of(arg0))
         };
-        let v1 = v0;
-        v1.max_exp_horizon_secs = arg1;
-        set_configuration_for_next_epoch(arg0, v1);
+        v0.max_exp_horizon_secs = arg1;
+        set_configuration_for_next_epoch(arg0, v0);
     }
     
     public fun update_training_wheels(arg0: &signer, arg1: 0x1::option::Option<vector<u8>>) acquires Configuration {
@@ -162,9 +159,8 @@ module 0x1::keyless_account {
         } else {
             *borrow_global<Configuration>(0x1::signer::address_of(arg0))
         };
-        let v2 = v1;
-        v2.training_wheels_pubkey = arg1;
-        set_configuration_for_next_epoch(arg0, v2);
+        v1.training_wheels_pubkey = arg1;
+        set_configuration_for_next_epoch(arg0, v1);
     }
     
     fun validate_groth16_vk(arg0: &Groth16VerificationKey) {
@@ -176,16 +172,16 @@ module 0x1::keyless_account {
         assert!(0x1::option::is_some<0x1::crypto_algebra::Element<0x1::bn254_algebra::G2>>(&v2), 3);
         let v3 = 0x1::crypto_algebra::deserialize<0x1::bn254_algebra::G2, 0x1::bn254_algebra::FormatG2Compr>(&arg0.delta_g2);
         assert!(0x1::option::is_some<0x1::crypto_algebra::Element<0x1::bn254_algebra::G2>>(&v3), 3);
-        let v4 = 0;
-        let v5 = false;
-        loop {
-            if (v5) {
-                v4 = v4 + 1;
+        let v4 = false;
+        let v5 = 0;
+        while (true) {
+            if (v4) {
+                v5 = v5 + 1;
             } else {
-                v5 = true;
+                v4 = true;
             };
-            if (v4 < 0x1::vector::length<vector<u8>>(&arg0.gamma_abc_g1)) {
-                let v6 = 0x1::vector::borrow<vector<u8>>(&arg0.gamma_abc_g1, v4);
+            if (v5 < 0x1::vector::length<vector<u8>>(&arg0.gamma_abc_g1)) {
+                let v6 = 0x1::vector::borrow<vector<u8>>(&arg0.gamma_abc_g1, v5);
                 let v7 = 0x1::crypto_algebra::deserialize<0x1::bn254_algebra::G1, 0x1::bn254_algebra::FormatG1Compr>(v6);
                 assert!(0x1::option::is_some<0x1::crypto_algebra::Element<0x1::bn254_algebra::G1>>(&v7), 2);
                 continue
@@ -194,5 +190,5 @@ module 0x1::keyless_account {
         };
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

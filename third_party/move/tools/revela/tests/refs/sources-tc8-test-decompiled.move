@@ -11,5 +11,5 @@ module 0x23::tc8 {
         v2 + 2 + v1
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

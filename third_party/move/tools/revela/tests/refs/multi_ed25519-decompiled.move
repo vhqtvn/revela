@@ -18,10 +18,20 @@ module 0x1::multi_ed25519 {
         };
         let v1 = v0 / 32;
         let v2 = *0x1::vector::borrow<u8>(&arg0, v0 - 1);
-        if (v1 == 0 || v1 > 32 || v0 % 32 != 1) {
+        if (v1 == 0 || v1 > 32) {
+            v3 = true;
+        } else {
+            v3 = v0 % 32 != 1;
+        };
+        if (v3) {
             return 0x1::option::none<u8>()
         };
-        if (v2 == 0 || v2 > (v1 as u8)) {
+        if (v2 == 0) {
+            v3 = true;
+        } else {
+            v3 = v2 > (v1 as u8);
+        };
+        if (v3) {
             return 0x1::option::none<u8>()
         };
         0x1::option::some<u8>(v2)
@@ -49,9 +59,7 @@ module 0x1::multi_ed25519 {
     }
     
     public fun new_validated_public_key_from_bytes_v2(arg0: vector<u8>) : 0x1::option::Option<ValidatedPublicKey> {
-        if (!0x1::features::multi_ed25519_pk_validate_v2_enabled()) {
-            abort 0x1::error::invalid_state(4)
-        };
+        assert!(0x1::features::multi_ed25519_pk_validate_v2_enabled(), 0x1::error::invalid_state(4));
         if (public_key_validate_v2_internal(arg0)) {
             let v1 = ValidatedPublicKey{bytes: arg0};
             0x1::option::some<ValidatedPublicKey>(v1)
@@ -130,5 +138,5 @@ module 0x1::multi_ed25519 {
         arg0.bytes
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

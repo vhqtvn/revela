@@ -70,39 +70,37 @@ module 0x1::storage_gas {
                 x : 10000, 
                 y : 10000,
             };
-            (&v6, &v7)
+            (&v7, &v6)
         } else {
-            let (v8, v9) = if (v3 < 0x1::vector::borrow<Point>(v1, 0).x) {
-                let v10 = Point{
+            if (v3 < 0x1::vector::borrow<Point>(v1, 0).x) {
+                let v8 = Point{
                     x : 0, 
                     y : 0,
                 };
-                (&v10, 0x1::vector::borrow<Point>(v1, 0))
+                (0x1::vector::borrow<Point>(v1, 0), &v8)
             } else {
-                let (v11, v12) = if (0x1::vector::borrow<Point>(v1, v2 - 1).x <= v3) {
-                    let v13 = Point{
+                if (0x1::vector::borrow<Point>(v1, v2 - 1).x <= v3) {
+                    let v9 = Point{
                         x : 10000, 
                         y : 10000,
                     };
-                    (0x1::vector::borrow<Point>(v1, v2 - 1), &v13)
+                    (&v9, 0x1::vector::borrow<Point>(v1, v2 - 1))
                 } else {
-                    let v14 = v2 - 2;
-                    let v15 = 0;
-                    while (v15 < v14) {
-                        let v16 = v14 - (v14 - v15) / 2;
-                        if (v3 < 0x1::vector::borrow<Point>(v1, v16).x) {
-                            v14 = v16 - 1;
+                    let v10 = 0;
+                    let v11 = v2 - 2;
+                    while (v10 < v11) {
+                        let v12 = v11 - (v11 - v10) / 2;
+                        if (v3 < 0x1::vector::borrow<Point>(v1, v12).x) {
+                            v11 = v12 - 1;
                             continue
                         };
-                        v15 = v16;
+                        v10 = v12;
                     };
-                    (0x1::vector::borrow<Point>(v1, v15), 0x1::vector::borrow<Point>(v1, v15 + 1))
-                };
-                (v11, v12)
-            };
-            (v8, v9)
+                    (0x1::vector::borrow<Point>(v1, v10 + 1), 0x1::vector::borrow<Point>(v1, v10))
+                }
+            }
         };
-        interpolate(0, 10000, arg2.min_gas, arg2.max_gas, interpolate(v4.x, v5.x, v4.y, v5.y, v3))
+        interpolate(0, 10000, arg2.min_gas, arg2.max_gas, interpolate(v5.x, v4.x, v5.y, v4.y, v3))
     }
     
     fun calculate_read_gas(arg0: &UsageGasConfig, arg1: u64) : u64 {
@@ -115,42 +113,42 @@ module 0x1::storage_gas {
     
     public fun initialize(arg0: &signer) {
         0x1::system_addresses::assert_aptos_framework(arg0);
-        assert!(!exists<StorageGasConfig>(@0x1), 0x1::error::already_exists(0));
-        let v0 = 1000;
-        let v1 = 1000000;
-        let v2 = base_8192_exponential_curve(300 * v0, 300 * v0 * 100);
-        let v3 = base_8192_exponential_curve(300 * v0, 300 * v0 * 100);
-        let v4 = UsageGasConfig{
-            target_usage : 2 * v0 * v1, 
-            read_curve   : v2, 
-            create_curve : v3, 
-            write_curve  : base_8192_exponential_curve(300 * v0, 300 * v0 * 100),
+        if (exists<StorageGasConfig>(@0x1)) {
+            abort 0x1::error::already_exists(0)
         };
-        let v5 = base_8192_exponential_curve(5 * v0, 5 * v0 * 100);
-        let v6 = base_8192_exponential_curve(5 * v0, 5 * v0 * 100);
-        let v7 = UsageGasConfig{
-            target_usage : 1 * v1 * v1, 
+        let v0 = base_8192_exponential_curve(300000, 30000000);
+        let v1 = base_8192_exponential_curve(300000, 30000000);
+        let v2 = UsageGasConfig{
+            target_usage : 2000000000, 
+            read_curve   : base_8192_exponential_curve(300000, 30000000), 
+            create_curve : v0, 
+            write_curve  : v1,
+        };
+        let v3 = base_8192_exponential_curve(5000, 500000);
+        let v4 = base_8192_exponential_curve(5000, 500000);
+        let v5 = UsageGasConfig{
+            target_usage : 1000000000000, 
             read_curve   : base_8192_exponential_curve(300, 30000), 
-            create_curve : v5, 
-            write_curve  : v6,
+            create_curve : v3, 
+            write_curve  : v4,
         };
-        let v8 = StorageGasConfig{
-            item_config : v4, 
-            byte_config : v7,
+        let v6 = StorageGasConfig{
+            item_config : v2, 
+            byte_config : v5,
         };
-        move_to<StorageGasConfig>(arg0, v8);
-        assert!(!exists<StorageGas>(@0x1), 0x1::error::already_exists(1));
-        let v9 = 300 * v0;
-        let v10 = 300 * v0;
-        let v11 = StorageGas{
-            per_item_read   : v9, 
-            per_item_create : 5 * v1, 
-            per_item_write  : v10, 
+        move_to<StorageGasConfig>(arg0, v6);
+        if (exists<StorageGas>(@0x1)) {
+            abort 0x1::error::already_exists(1)
+        };
+        let v7 = StorageGas{
+            per_item_read   : 300000, 
+            per_item_create : 5000000, 
+            per_item_write  : 300000, 
             per_byte_read   : 300, 
-            per_byte_create : 5 * v0, 
-            per_byte_write  : 5 * v0,
+            per_byte_create : 5000, 
+            per_byte_write  : 5000,
         };
-        move_to<StorageGas>(arg0, v11);
+        move_to<StorageGas>(arg0, v7);
     }
     
     fun interpolate(arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64) : u64 {
@@ -159,7 +157,7 @@ module 0x1::storage_gas {
     
     public fun new_gas_curve(arg0: u64, arg1: u64, arg2: vector<Point>) : GasCurve {
         assert!(arg1 >= arg0, 0x1::error::invalid_argument(2));
-        assert!(arg1 <= 18446744073709551615 / 10000, 0x1::error::invalid_argument(2));
+        assert!(arg1 <= 1844674407370955, 0x1::error::invalid_argument(2));
         validate_points(&arg2);
         GasCurve{
             min_gas : arg0, 
@@ -185,7 +183,7 @@ module 0x1::storage_gas {
     
     public fun new_usage_gas_config(arg0: u64, arg1: GasCurve, arg2: GasCurve, arg3: GasCurve) : UsageGasConfig {
         assert!(arg0 > 0, 0x1::error::invalid_argument(3));
-        assert!(arg0 <= 18446744073709551615 / 10000, 0x1::error::invalid_argument(4));
+        assert!(arg0 <= 1844674407370955, 0x1::error::invalid_argument(4));
         UsageGasConfig{
             target_usage : arg0, 
             read_curve   : arg1, 
@@ -240,5 +238,5 @@ module 0x1::storage_gas {
         };
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

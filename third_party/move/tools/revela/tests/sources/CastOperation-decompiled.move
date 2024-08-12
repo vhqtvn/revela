@@ -7,5 +7,5 @@ module 0xbadbadbad::CastOperation {
         ((arg0 as u128) as u256)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

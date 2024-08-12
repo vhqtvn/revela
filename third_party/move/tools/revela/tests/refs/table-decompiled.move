@@ -28,17 +28,18 @@ module 0x1::table {
     native fun borrow_box<T0: copy + drop, T1, T2>(arg0: &Table<T0, T1>, arg1: T0) : &Box<T1>;
     native fun borrow_box_mut<T0: copy + drop, T1, T2>(arg0: &mut Table<T0, T1>, arg1: T0) : &mut Box<T1>;
     public fun borrow_mut_with_default<T0: copy + drop, T1: drop>(arg0: &mut Table<T0, T1>, arg1: T0, arg2: T1) : &mut T1 {
-        if (!contains<T0, T1>(arg0, arg1)) {
+        if (contains<T0, T1>(arg0, arg1)) {
+        } else {
             add<T0, T1>(arg0, arg1, arg2);
         };
         borrow_mut<T0, T1>(arg0, arg1)
     }
     
     public fun borrow_with_default<T0: copy + drop, T1>(arg0: &Table<T0, T1>, arg1: T0, arg2: &T1) : &T1 {
-        if (!contains<T0, T1>(arg0, arg1)) {
-            arg2
-        } else {
+        if (contains<T0, T1>(arg0, arg1)) {
             borrow<T0, T1>(arg0, arg1)
+        } else {
+            arg2
         }
     }
     
@@ -62,12 +63,12 @@ module 0x1::table {
     
     native fun remove_box<T0: copy + drop, T1, T2>(arg0: &mut Table<T0, T1>, arg1: T0) : Box<T1>;
     public fun upsert<T0: copy + drop, T1: drop>(arg0: &mut Table<T0, T1>, arg1: T0, arg2: T1) {
-        if (!contains<T0, T1>(arg0, arg1)) {
-            add<T0, T1>(arg0, arg1, arg2);
-        } else {
+        if (contains<T0, T1>(arg0, arg1)) {
             *borrow_mut<T0, T1>(arg0, arg1) = arg2;
+        } else {
+            add<T0, T1>(arg0, arg1, arg2);
         };
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

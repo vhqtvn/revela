@@ -13,7 +13,8 @@ module 0x1::reconfiguration_state {
     
     public fun initialize(arg0: &signer) {
         0x1::system_addresses::assert_aptos_framework(arg0);
-        if (!exists<State>(@0x1)) {
+        if (exists<State>(@0x1)) {
+        } else {
             let v0 = StateInactive{dummy_field: false};
             let v1 = State{variant: 0x1::copyable_any::pack<StateInactive>(v0)};
             move_to<State>(arg0, v1);
@@ -25,11 +26,11 @@ module 0x1::reconfiguration_state {
     }
     
     public(friend) fun is_in_progress() : bool acquires State {
-        if (!exists<State>(@0x1)) {
-            return false
+        if (exists<State>(@0x1)) {
+            let v0 = *0x1::string::bytes(0x1::copyable_any::type_name(&borrow_global<State>(@0x1).variant));
+            return v0 == b"0x1::reconfiguration_state::StateActive"
         };
-        let v0 = *0x1::string::bytes(0x1::copyable_any::type_name(&borrow_global<State>(@0x1).variant));
-        v0 == b"0x1::reconfiguration_state::StateActive"
+        false
     }
     
     public fun is_initialized() : bool {
@@ -44,6 +45,8 @@ module 0x1::reconfiguration_state {
             let v2 = StateInactive{dummy_field: false};
             v0.variant = 0x1::copyable_any::pack<StateInactive>(v2);
         };
+        return
+        abort 0x1::error::invalid_state(1)
     }
     
     public(friend) fun on_reconfig_start() acquires State {
@@ -65,5 +68,5 @@ module 0x1::reconfiguration_state {
         v2.start_time_secs
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

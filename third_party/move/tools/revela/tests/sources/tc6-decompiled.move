@@ -7,5 +7,5 @@ module 0x12::tc6 {
         v0 - 5
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

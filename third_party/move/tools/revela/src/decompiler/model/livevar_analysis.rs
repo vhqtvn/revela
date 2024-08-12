@@ -475,7 +475,7 @@ impl<'a> TransferFunctions for LiveVarAnalysis<'a> {
                 state.insert(&[*src]);
             }
             Prop(_, _, exp) => {
-                for idx in exp.used_temporaries() {
+                for (idx, _) in exp.used_temporaries_with_types(self.func_target.global_env()) {
                     state.insert(&[idx]);
                 }
             }

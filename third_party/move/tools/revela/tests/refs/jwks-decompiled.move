@@ -100,9 +100,8 @@ module 0x1::jwks {
                     } else {
                         ProviderJWKs{issuer: v5.issuer, version: 0, jwks: 0x1::vector::empty<JWK>()}
                     };
-                    let v8 = v7;
-                    upsert_jwk(&mut v8, v5.jwk);
-                    upsert_provider_jwks(arg0, v8);
+                    upsert_jwk(&mut v7, v5.jwk);
+                    upsert_provider_jwks(arg0, v7);
                 };
             };
         };
@@ -112,14 +111,16 @@ module 0x1::jwks {
     
     fun get_jwk_id(arg0: &JWK) : vector<u8> {
         let v0 = *0x1::string::bytes(0x1::copyable_any::type_name(&arg0.variant));
-        if (v0 == b"0x1::jwks::RSA_JWK") {
+        let v1 = if (v0 == b"0x1::jwks::RSA_JWK") {
             let v2 = 0x1::copyable_any::unpack<RSA_JWK>(arg0.variant);
             *0x1::string::bytes(&v2.kid)
         } else {
             assert!(v0 == b"0x1::jwks::UnsupportedJWK", 0x1::error::invalid_argument(4));
             let v3 = 0x1::copyable_any::unpack<UnsupportedJWK>(arg0.variant);
             v3.id
-        }
+        };
+        return v1
+        abort 0x1::error::invalid_argument(4)
     }
     
     public fun get_patched_jwk(arg0: vector<u8>, arg1: vector<u8>) : JWK acquires PatchedJWKs {
@@ -212,18 +213,18 @@ module 0x1::jwks {
     
     fun remove_issuer(arg0: &mut AllProvidersJWKs, arg1: vector<u8>) : 0x1::option::Option<ProviderJWKs> {
         let v0 = &arg0.entries;
-        let v1 = false;
+        let v1 = 0;
         let v2 = 0;
-        let v3 = 0;
-        while (v3 < 0x1::vector::length<ProviderJWKs>(v0)) {
-            if (0x1::vector::borrow<ProviderJWKs>(v0, v3).issuer == arg1) {
-                v1 = true;
-                v2 = v3;
+        let v3 = false;
+        while (v1 < 0x1::vector::length<ProviderJWKs>(v0)) {
+            if (0x1::vector::borrow<ProviderJWKs>(v0, v1).issuer == arg1) {
+                v3 = true;
+                v2 = v1;
                 break
             };
-            v3 = v3 + 1;
+            v1 = v1 + 1;
         };
-        if (v1) {
+        if (v3) {
             0x1::option::some<ProviderJWKs>(0x1::vector::remove<ProviderJWKs>(&mut arg0.entries, v2))
         } else {
             0x1::option::none<ProviderJWKs>()
@@ -244,18 +245,18 @@ module 0x1::jwks {
     
     fun remove_jwk(arg0: &mut ProviderJWKs, arg1: vector<u8>) : 0x1::option::Option<JWK> {
         let v0 = &arg0.jwks;
-        let v1 = false;
+        let v1 = 0;
         let v2 = 0;
-        let v3 = 0;
-        while (v3 < 0x1::vector::length<JWK>(v0)) {
-            if (arg1 == get_jwk_id(0x1::vector::borrow<JWK>(v0, v3))) {
-                v1 = true;
-                v2 = v3;
+        let v3 = false;
+        while (v1 < 0x1::vector::length<JWK>(v0)) {
+            if (arg1 == get_jwk_id(0x1::vector::borrow<JWK>(v0, v1))) {
+                v3 = true;
+                v2 = v1;
                 break
             };
-            v3 = v3 + 1;
+            v1 = v1 + 1;
         };
-        if (v1) {
+        if (v3) {
             0x1::option::some<JWK>(0x1::vector::remove<JWK>(&mut arg0.jwks, v2))
         } else {
             0x1::option::none<JWK>()
@@ -275,25 +276,24 @@ module 0x1::jwks {
         } else {
             *borrow_global_mut<SupportedOIDCProviders>(@0x1)
         };
-        let v1 = v0;
-        0x1::config_buffer::upsert<SupportedOIDCProviders>(v1);
-        remove_oidc_provider_internal(&mut v1, arg1)
+        0x1::config_buffer::upsert<SupportedOIDCProviders>(v0);
+        remove_oidc_provider_internal(&mut v0, arg1)
     }
     
     fun remove_oidc_provider_internal(arg0: &mut SupportedOIDCProviders, arg1: vector<u8>) : 0x1::option::Option<vector<u8>> {
         let v0 = &arg0.providers;
-        let v1 = false;
+        let v1 = 0;
         let v2 = 0;
-        let v3 = 0;
-        while (v3 < 0x1::vector::length<OIDCProvider>(v0)) {
-            if (0x1::vector::borrow<OIDCProvider>(v0, v3).name == arg1) {
-                v1 = true;
-                v2 = v3;
+        let v3 = false;
+        while (v1 < 0x1::vector::length<OIDCProvider>(v0)) {
+            if (0x1::vector::borrow<OIDCProvider>(v0, v1).name == arg1) {
+                v3 = true;
+                v2 = v1;
                 break
             };
-            v3 = v3 + 1;
+            v1 = v1 + 1;
         };
-        if (v1) {
+        if (v3) {
             let v5 = 0x1::vector::swap_remove<OIDCProvider>(&mut arg0.providers, v2);
             0x1::option::some<vector<u8>>(v5.config_url)
         } else {
@@ -309,18 +309,18 @@ module 0x1::jwks {
     
     fun try_get_jwk_by_id(arg0: &ProviderJWKs, arg1: vector<u8>) : 0x1::option::Option<JWK> {
         let v0 = &arg0.jwks;
-        let v1 = false;
+        let v1 = 0;
         let v2 = 0;
-        let v3 = 0;
-        while (v3 < 0x1::vector::length<JWK>(v0)) {
-            if (arg1 == get_jwk_id(0x1::vector::borrow<JWK>(v0, v3))) {
-                v1 = true;
-                v2 = v3;
+        let v3 = false;
+        while (v1 < 0x1::vector::length<JWK>(v0)) {
+            if (arg1 == get_jwk_id(0x1::vector::borrow<JWK>(v0, v1))) {
+                v3 = true;
+                v2 = v1;
                 break
             };
-            v3 = v3 + 1;
+            v1 = v1 + 1;
         };
-        if (v1) {
+        if (v3) {
             0x1::option::some<JWK>(*0x1::vector::borrow<JWK>(&arg0.jwks, v2))
         } else {
             0x1::option::none<JWK>()
@@ -329,18 +329,18 @@ module 0x1::jwks {
     
     fun try_get_jwk_by_issuer(arg0: &AllProvidersJWKs, arg1: vector<u8>, arg2: vector<u8>) : 0x1::option::Option<JWK> {
         let v0 = &arg0.entries;
-        let v1 = false;
+        let v1 = 0;
         let v2 = 0;
-        let v3 = 0;
-        while (v3 < 0x1::vector::length<ProviderJWKs>(v0)) {
-            if (arg1 == 0x1::vector::borrow<ProviderJWKs>(v0, v3).issuer) {
-                v1 = true;
-                v2 = v3;
+        let v3 = false;
+        while (v1 < 0x1::vector::length<ProviderJWKs>(v0)) {
+            if (arg1 == 0x1::vector::borrow<ProviderJWKs>(v0, v1).issuer) {
+                v3 = true;
+                v2 = v1;
                 break
             };
-            v3 = v3 + 1;
+            v1 = v1 + 1;
         };
-        if (v1) {
+        if (v3) {
             try_get_jwk_by_id(0x1::vector::borrow<ProviderJWKs>(&arg0.entries, v2), arg2)
         } else {
             0x1::option::none<JWK>()
@@ -372,24 +372,24 @@ module 0x1::jwks {
     }
     
     fun upsert_jwk(arg0: &mut ProviderJWKs, arg1: JWK) : 0x1::option::Option<JWK> {
-        let v0 = false;
-        let v1 = 0;
-        while (v1 < 0x1::vector::length<JWK>(&arg0.jwks)) {
-            let v2 = get_jwk_id(0x1::vector::borrow<JWK>(&arg0.jwks, v1));
+        let v0 = 0;
+        let v1 = false;
+        while (v0 < 0x1::vector::length<JWK>(&arg0.jwks)) {
+            let v2 = get_jwk_id(0x1::vector::borrow<JWK>(&arg0.jwks, v0));
             let v3 = 0x1::comparator::compare_u8_vector(get_jwk_id(&arg1), v2);
             if (0x1::comparator::is_greater_than(&v3)) {
-                v1 = v1 + 1;
+                v0 = v0 + 1;
             } else {
-                v0 = 0x1::comparator::is_equal(&v3);
+                v1 = 0x1::comparator::is_equal(&v3);
                 break
             };
         };
-        if (v0) {
-            let v5 = 0x1::vector::borrow_mut<JWK>(&mut arg0.jwks, v1);
+        if (v1) {
+            let v5 = 0x1::vector::borrow_mut<JWK>(&mut arg0.jwks, v0);
             *v5 = arg1;
             0x1::option::some<JWK>(*v5)
         } else {
-            0x1::vector::insert<JWK>(&mut arg0.jwks, v1, arg1);
+            0x1::vector::insert<JWK>(&mut arg0.jwks, v0, arg1);
             0x1::option::none<JWK>()
         }
     }
@@ -413,38 +413,37 @@ module 0x1::jwks {
         } else {
             *borrow_global_mut<SupportedOIDCProviders>(@0x1)
         };
-        let v1 = v0;
-        let v2 = OIDCProvider{
+        let v1 = OIDCProvider{
             name       : arg1, 
             config_url : arg2,
         };
-        0x1::vector::push_back<OIDCProvider>(&mut v1.providers, v2);
-        0x1::config_buffer::upsert<SupportedOIDCProviders>(v1);
-        remove_oidc_provider_internal(&mut v1, arg1)
+        0x1::vector::push_back<OIDCProvider>(&mut v0.providers, v1);
+        0x1::config_buffer::upsert<SupportedOIDCProviders>(v0);
+        remove_oidc_provider_internal(&mut v0, arg1)
     }
     
     fun upsert_provider_jwks(arg0: &mut AllProvidersJWKs, arg1: ProviderJWKs) : 0x1::option::Option<ProviderJWKs> {
-        let v0 = false;
-        let v1 = 0;
-        while (v1 < 0x1::vector::length<ProviderJWKs>(&arg0.entries)) {
-            let v2 = 0x1::vector::borrow<ProviderJWKs>(&arg0.entries, v1).issuer;
+        let v0 = 0;
+        let v1 = false;
+        while (v0 < 0x1::vector::length<ProviderJWKs>(&arg0.entries)) {
+            let v2 = 0x1::vector::borrow<ProviderJWKs>(&arg0.entries, v0).issuer;
             let v3 = 0x1::comparator::compare_u8_vector(arg1.issuer, v2);
             if (0x1::comparator::is_greater_than(&v3)) {
-                v1 = v1 + 1;
+                v0 = v0 + 1;
             } else {
-                v0 = 0x1::comparator::is_equal(&v3);
+                v1 = 0x1::comparator::is_equal(&v3);
                 break
             };
         };
-        if (v0) {
-            let v5 = 0x1::vector::borrow_mut<ProviderJWKs>(&mut arg0.entries, v1);
+        if (v1) {
+            let v5 = 0x1::vector::borrow_mut<ProviderJWKs>(&mut arg0.entries, v0);
             *v5 = arg1;
             0x1::option::some<ProviderJWKs>(*v5)
         } else {
-            0x1::vector::insert<ProviderJWKs>(&mut arg0.entries, v1, arg1);
+            0x1::vector::insert<ProviderJWKs>(&mut arg0.entries, v0, arg1);
             0x1::option::none<ProviderJWKs>()
         }
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

@@ -1,16 +1,4 @@
 module 0x1::staking_contract {
-    struct AddDistribution has drop, store {
-        operator: address,
-        pool_address: address,
-        amount: u64,
-    }
-    
-    struct AddDistributionEvent has drop, store {
-        operator: address,
-        pool_address: address,
-        amount: u64,
-    }
-    
     struct AddStake has drop, store {
         operator: address,
         pool_address: address,
@@ -23,8 +11,40 @@ module 0x1::staking_contract {
         amount: u64,
     }
     
+    struct UnlockStake has drop, store {
+        operator: address,
+        pool_address: address,
+        amount: u64,
+        commission_paid: u64,
+    }
+    
+    struct UnlockStakeEvent has drop, store {
+        operator: address,
+        pool_address: address,
+        amount: u64,
+        commission_paid: u64,
+    }
+    
     struct BeneficiaryForOperator has key {
         beneficiary_for_operator: address,
+    }
+    
+    struct SetBeneficiaryForOperator has drop, store {
+        operator: address,
+        old_beneficiary: address,
+        new_beneficiary: address,
+    }
+    
+    struct AddDistribution has drop, store {
+        operator: address,
+        pool_address: address,
+        amount: u64,
+    }
+    
+    struct AddDistributionEvent has drop, store {
+        operator: address,
+        pool_address: address,
+        amount: u64,
     }
     
     struct CreateStakingContract has drop, store {
@@ -81,12 +101,6 @@ module 0x1::staking_contract {
         pool_address: address,
     }
     
-    struct SetBeneficiaryForOperator has drop, store {
-        operator: address,
-        old_beneficiary: address,
-        new_beneficiary: address,
-    }
-    
     struct StakingContract has store {
         principal: u64,
         pool_address: address,
@@ -127,20 +141,6 @@ module 0x1::staking_contract {
         old_operator: address,
         new_operator: address,
         pool_address: address,
-    }
-    
-    struct UnlockStake has drop, store {
-        operator: address,
-        pool_address: address,
-        amount: u64,
-        commission_paid: u64,
-    }
-    
-    struct UnlockStakeEvent has drop, store {
-        operator: address,
-        pool_address: address,
-        amount: u64,
-        commission_paid: u64,
     }
     
     struct UpdateCommission has drop, store {
@@ -266,12 +266,15 @@ module 0x1::staking_contract {
         let v3 = 0x1::coin::value<0x1::aptos_coin::AptosCoin>(&arg3);
         assert!(v3 >= v1, 0x1::error::invalid_argument(1));
         let v4 = 0x1::signer::address_of(arg0);
-        if (!exists<Store>(v4)) {
+        if (exists<Store>(v4)) {
+        } else {
             move_to<Store>(arg0, new_staking_contracts_holder(arg0));
         };
         let v5 = borrow_global_mut<Store>(v4);
         let v6 = &mut v5.staking_contracts;
-        assert!(!0x1::simple_map::contains_key<address, StakingContract>(v6, &arg1), 0x1::error::already_exists(6));
+        if (0x1::simple_map::contains_key<address, StakingContract>(v6, &arg1)) {
+            abort 0x1::error::already_exists(6)
+        };
         let (v7, v8, v9) = create_stake_pool(arg0, arg1, arg2, arg5);
         let v10 = v9;
         let v11 = v7;
@@ -412,22 +415,22 @@ module 0x1::staking_contract {
     
     public entry fun request_commission(arg0: &signer, arg1: address, arg2: address) acquires BeneficiaryForOperator, Store {
         let v0 = 0x1::signer::address_of(arg0);
-        let v1 = if (v0 == arg1 || v0 == arg2) {
-            true
+        if (v0 == arg1 || v0 == arg2) {
+            v5 = true;
         } else {
-            let v2 = beneficiary_for_operator(arg2);
-            v0 == v2
+            let v1 = beneficiary_for_operator(arg2);
+            v5 = v0 == v1;
         };
-        assert!(v1, 0x1::error::unauthenticated(8));
+        assert!(v5, 0x1::error::unauthenticated(8));
         assert_staking_contract_exists(arg1, arg2);
-        let v3 = borrow_global_mut<Store>(arg1);
-        let v4 = 0x1::simple_map::borrow_mut<address, StakingContract>(&mut v3.staking_contracts, &arg2);
-        if (v4.commission_percentage == 0) {
+        let v2 = borrow_global_mut<Store>(arg1);
+        let v3 = 0x1::simple_map::borrow_mut<address, StakingContract>(&mut v2.staking_contracts, &arg2);
+        if (v3.commission_percentage == 0) {
             return
         };
-        distribute_internal(arg1, arg2, v4, &mut v3.distribute_events);
-        let v5 = &mut v3.request_commission_events;
-        request_commission_internal(arg2, v4, &mut v3.add_distribution_events, v5);
+        distribute_internal(arg1, arg2, v3, &mut v2.distribute_events);
+        let v4 = &mut v2.request_commission_events;
+        request_commission_internal(arg2, v3, &mut v2.add_distribution_events, v4);
     }
     
     fun request_commission_internal(arg0: address, arg1: &mut StakingContract, arg2: &mut 0x1::event::EventHandle<AddDistributionEvent>, arg3: &mut 0x1::event::EventHandle<RequestCommissionEvent>) : u64 {
@@ -510,11 +513,11 @@ module 0x1::staking_contract {
     }
     
     public fun staking_contract_exists(arg0: address, arg1: address) : bool acquires Store {
-        if (!exists<Store>(arg0)) {
-            return false
+        if (exists<Store>(arg0)) {
+            let v0 = &borrow_global<Store>(arg0).staking_contracts;
+            return 0x1::simple_map::contains_key<address, StakingContract>(v0, &arg1)
         };
-        let v0 = &borrow_global<Store>(arg0).staking_contracts;
-        0x1::simple_map::contains_key<address, StakingContract>(v0, &arg1)
+        false
     }
     
     public entry fun switch_operator(arg0: &signer, arg1: address, arg2: address, arg3: u64) acquires BeneficiaryForOperator, Store {
@@ -522,31 +525,32 @@ module 0x1::staking_contract {
         assert_staking_contract_exists(v0, arg1);
         let v1 = borrow_global_mut<Store>(v0);
         let v2 = &mut v1.staking_contracts;
-        let v3 = !0x1::simple_map::contains_key<address, StakingContract>(v2, &arg2);
-        assert!(v3, 0x1::error::invalid_state(5));
-        let (_, v5) = 0x1::simple_map::remove<address, StakingContract>(v2, &arg1);
-        let v6 = v5;
-        distribute_internal(v0, arg1, &mut v6, &mut v1.distribute_events);
-        let v7 = &mut v1.request_commission_events;
-        request_commission_internal(arg1, &mut v6, &mut v1.add_distribution_events, v7);
-        0x1::stake::set_operator_with_cap(&v6.owner_cap, arg2);
-        v6.commission_percentage = arg3;
-        let v8 = v6.pool_address;
-        0x1::simple_map::add<address, StakingContract>(v2, arg2, v6);
+        if (0x1::simple_map::contains_key<address, StakingContract>(v2, &arg2)) {
+            abort 0x1::error::invalid_state(5)
+        };
+        let (_, v4) = 0x1::simple_map::remove<address, StakingContract>(v2, &arg1);
+        let v5 = v4;
+        distribute_internal(v0, arg1, &mut v5, &mut v1.distribute_events);
+        let v6 = &mut v1.request_commission_events;
+        request_commission_internal(arg1, &mut v5, &mut v1.add_distribution_events, v6);
+        0x1::stake::set_operator_with_cap(&v5.owner_cap, arg2);
+        v5.commission_percentage = arg3;
+        let v7 = v5.pool_address;
+        0x1::simple_map::add<address, StakingContract>(v2, arg2, v5);
         if (0x1::features::module_event_migration_enabled()) {
-            let v9 = SwitchOperator{
+            let v8 = SwitchOperator{
                 old_operator : arg1, 
                 new_operator : arg2, 
-                pool_address : v8,
+                pool_address : v7,
             };
-            0x1::event::emit<SwitchOperator>(v9);
+            0x1::event::emit<SwitchOperator>(v8);
         };
-        let v10 = SwitchOperatorEvent{
+        let v9 = SwitchOperatorEvent{
             old_operator : arg1, 
             new_operator : arg2, 
-            pool_address : v8,
+            pool_address : v7,
         };
-        0x1::event::emit_event<SwitchOperatorEvent>(&mut v1.switch_operator_events, v10);
+        0x1::event::emit_event<SwitchOperatorEvent>(&mut v1.switch_operator_events, v9);
     }
     
     public entry fun switch_operator_with_same_commission(arg0: &signer, arg1: address, arg2: address) acquires BeneficiaryForOperator, Store {
@@ -681,5 +685,5 @@ module 0x1::staking_contract {
         0x1::event::emit_event<UpdateVoterEvent>(&mut v1.update_voter_events, v6);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

@@ -20,5 +20,5 @@ module 0x1::any {
         0x1::from_bcs::from_bytes<T0>(arg0.data)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

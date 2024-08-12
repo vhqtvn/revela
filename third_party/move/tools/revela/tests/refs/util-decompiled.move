@@ -4,5 +4,5 @@ module 0x1::util {
     }
     
     native public(friend) fun from_bytes<T0>(arg0: vector<u8>) : T0;
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

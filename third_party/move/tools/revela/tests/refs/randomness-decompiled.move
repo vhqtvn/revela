@@ -10,7 +10,7 @@ module 0x1::randomness {
     }
     
     public fun bytes(arg0: u64) : vector<u8> acquires PerBlockRandomness {
-        let v0 = b"";
+        let v0 = 0x1::vector::empty<u8>();
         let v1 = 0;
         while (v1 < arg0) {
             let v2 = next_32_bytes();
@@ -28,7 +28,8 @@ module 0x1::randomness {
     native fun fetch_and_increment_txn_counter() : vector<u8>;
     public fun initialize(arg0: &signer) {
         0x1::system_addresses::assert_aptos_framework(arg0);
-        if (!exists<PerBlockRandomness>(@0x1)) {
+        if (exists<PerBlockRandomness>(@0x1)) {
+        } else {
             let v0 = PerBlockRandomness{
                 epoch : 0, 
                 round : 0, 
@@ -62,9 +63,9 @@ module 0x1::randomness {
     public fun permutation(arg0: u64) : vector<u64> acquires PerBlockRandomness {
         let v0 = RandomnessGeneratedEvent{dummy_field: false};
         0x1::event::emit<RandomnessGeneratedEvent>(v0);
-        let v1 = vector[];
+        let v1 = 0x1::vector::empty<u64>();
         if (arg0 == 0) {
-            return vector[]
+            return 0x1::vector::empty<u64>()
         };
         let v2 = 0;
         while (v2 < arg0) {
@@ -87,10 +88,10 @@ module 0x1::randomness {
         } else {
             arg0 - v0
         };
-        let v2 = if (!v3) {
-            arg0 - v0
-        } else {
+        let v2 = if (v3) {
             arg0 + arg1
+        } else {
+            arg0 - v0
         };
         take_first(v1, v2)
     }
@@ -103,14 +104,14 @@ module 0x1::randomness {
         let v0 = next_32_bytes();
         let v1 = 0;
         let v2 = 0;
-        while (v1 < 16) {
-            let v3 = v2 * 256;
-            v2 = v3 + (0x1::vector::pop_back<u8>(&mut v0) as u128);
-            v1 = v1 + 1;
+        while (v2 < 16) {
+            let v3 = v1 * 256;
+            v1 = v3 + (0x1::vector::pop_back<u8>(&mut v0) as u128);
+            v2 = v2 + 1;
         };
         let v4 = RandomnessGeneratedEvent{dummy_field: false};
         0x1::event::emit<RandomnessGeneratedEvent>(v4);
-        v2
+        v1
     }
     
     public fun u128_range(arg0: u128, arg1: u128) : u128 acquires PerBlockRandomness {
@@ -124,14 +125,14 @@ module 0x1::randomness {
         let v0 = next_32_bytes();
         let v1 = 0;
         let v2 = 0;
-        while (v1 < 2) {
-            let v3 = v2 * 256;
-            v2 = v3 + (0x1::vector::pop_back<u8>(&mut v0) as u16);
-            v1 = v1 + 1;
+        while (v2 < 2) {
+            let v3 = v1 * 256;
+            v1 = v3 + (0x1::vector::pop_back<u8>(&mut v0) as u16);
+            v2 = v2 + 1;
         };
         let v4 = RandomnessGeneratedEvent{dummy_field: false};
         0x1::event::emit<RandomnessGeneratedEvent>(v4);
-        v2
+        v1
     }
     
     public fun u16_range(arg0: u16, arg1: u16) : u16 acquires PerBlockRandomness {
@@ -151,12 +152,12 @@ module 0x1::randomness {
         let v0 = next_32_bytes();
         let v1 = 0;
         let v2 = 0;
-        while (v1 < 32) {
-            let v3 = v2 * 256;
-            v2 = v3 + (0x1::vector::pop_back<u8>(&mut v0) as u256);
-            v1 = v1 + 1;
+        while (v2 < 32) {
+            let v3 = v1 * 256;
+            v1 = v3 + (0x1::vector::pop_back<u8>(&mut v0) as u256);
+            v2 = v2 + 1;
         };
-        v2
+        v1
     }
     
     public fun u256_range(arg0: u256, arg1: u256) : u256 acquires PerBlockRandomness {
@@ -178,14 +179,14 @@ module 0x1::randomness {
         let v0 = next_32_bytes();
         let v1 = 0;
         let v2 = 0;
-        while (v1 < 4) {
-            let v3 = v2 * 256;
-            v2 = v3 + (0x1::vector::pop_back<u8>(&mut v0) as u32);
-            v1 = v1 + 1;
+        while (v2 < 4) {
+            let v3 = v1 * 256;
+            v1 = v3 + (0x1::vector::pop_back<u8>(&mut v0) as u32);
+            v2 = v2 + 1;
         };
         let v4 = RandomnessGeneratedEvent{dummy_field: false};
         0x1::event::emit<RandomnessGeneratedEvent>(v4);
-        v2
+        v1
     }
     
     public fun u32_range(arg0: u32, arg1: u32) : u32 acquires PerBlockRandomness {
@@ -199,14 +200,14 @@ module 0x1::randomness {
         let v0 = next_32_bytes();
         let v1 = 0;
         let v2 = 0;
-        while (v1 < 8) {
-            let v3 = v2 * 256;
-            v2 = v3 + (0x1::vector::pop_back<u8>(&mut v0) as u64);
-            v1 = v1 + 1;
+        while (v2 < 8) {
+            let v3 = v1 * 256;
+            v1 = v3 + (0x1::vector::pop_back<u8>(&mut v0) as u64);
+            v2 = v2 + 1;
         };
         let v4 = RandomnessGeneratedEvent{dummy_field: false};
         0x1::event::emit<RandomnessGeneratedEvent>(v4);
-        v2
+        v1
     }
     
     public fun u64_range(arg0: u64, arg1: u64) : u64 acquires PerBlockRandomness {
@@ -234,5 +235,5 @@ module 0x1::randomness {
         arg0 + ((v0 % ((arg1 - arg0) as u256)) as u8)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

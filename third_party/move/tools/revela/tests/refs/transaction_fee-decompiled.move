@@ -72,7 +72,9 @@ module 0x1::transaction_fee {
     
     public fun initialize_fee_collection_and_distribution(arg0: &signer, arg1: u8) {
         0x1::system_addresses::assert_aptos_framework(arg0);
-        assert!(!exists<CollectedFeesPerBlock>(@0x1), 0x1::error::already_exists(1));
+        if (exists<CollectedFeesPerBlock>(@0x1)) {
+            abort 0x1::error::already_exists(1)
+        };
         assert!(arg1 <= 100, 0x1::error::out_of_range(3));
         0x1::stake::initialize_validator_fees(arg0);
         let v0 = 0x1::coin::initialize_aggregatable_coin<0x1::aptos_coin::AptosCoin>(arg0);
@@ -99,30 +101,30 @@ module 0x1::transaction_fee {
     }
     
     public(friend) fun process_collected_fees() acquires AptosCoinCapabilities, CollectedFeesPerBlock {
-        if (!is_fees_collection_enabled()) {
-            return
-        };
-        let v0 = borrow_global_mut<CollectedFeesPerBlock>(@0x1);
-        if (0x1::coin::is_aggregatable_coin_zero<0x1::aptos_coin::AptosCoin>(&v0.amount)) {
-            if (0x1::option::is_some<address>(&v0.proposer)) {
-                0x1::option::extract<address>(&mut v0.proposer);
-            };
-            return
-        };
-        let v1 = 0x1::coin::drain_aggregatable_coin<0x1::aptos_coin::AptosCoin>(&mut v0.amount);
-        if (0x1::option::is_some<address>(&v0.proposer)) {
-            let v2 = 0x1::option::extract<address>(&mut v0.proposer);
-            if (v2 == @0x3001) {
-                burn_coin_fraction(&mut v1, 100);
-                0x1::coin::destroy_zero<0x1::aptos_coin::AptosCoin>(v1);
+        if (is_fees_collection_enabled()) {
+            let v0 = borrow_global_mut<CollectedFeesPerBlock>(@0x1);
+            if (0x1::coin::is_aggregatable_coin_zero<0x1::aptos_coin::AptosCoin>(&v0.amount)) {
+                if (0x1::option::is_some<address>(&v0.proposer)) {
+                    0x1::option::extract<address>(&mut v0.proposer);
+                };
                 return
             };
-            burn_coin_fraction(&mut v1, v0.burn_percentage);
-            0x1::stake::add_transaction_fee(v2, v1);
+            let v1 = 0x1::coin::drain_aggregatable_coin<0x1::aptos_coin::AptosCoin>(&mut v0.amount);
+            if (0x1::option::is_some<address>(&v0.proposer)) {
+                let v2 = 0x1::option::extract<address>(&mut v0.proposer);
+                if (v2 == @0x3001) {
+                    burn_coin_fraction(&mut v1, 100);
+                    0x1::coin::destroy_zero<0x1::aptos_coin::AptosCoin>(v1);
+                    return
+                };
+                burn_coin_fraction(&mut v1, v0.burn_percentage);
+                0x1::stake::add_transaction_fee(v2, v1);
+                return
+            };
+            burn_coin_fraction(&mut v1, 100);
+            0x1::coin::destroy_zero<0x1::aptos_coin::AptosCoin>(v1);
             return
         };
-        burn_coin_fraction(&mut v1, 100);
-        0x1::coin::destroy_zero<0x1::aptos_coin::AptosCoin>(v1);
     }
     
     public(friend) fun register_proposer_for_fee_collection(arg0: address) acquires CollectedFeesPerBlock {
@@ -159,5 +161,5 @@ module 0x1::transaction_fee {
         };
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

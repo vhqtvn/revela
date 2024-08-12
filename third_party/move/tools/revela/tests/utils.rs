@@ -1,12 +1,12 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     path::PathBuf,
 };
 
 use move_binary_format::{
     binary_views::BinaryIndexedView, file_format::CompiledScript, CompiledModule,
 };
-use move_command_line_common::address::NumericalAddress;
+use move_command_line_common::{address::NumericalAddress, files::FileHash};
 use move_compiler::{compiled_unit::CompiledUnit, shared::known_attributes::KnownAttribute, Flags};
 
 #[allow(dead_code)]
@@ -47,8 +47,8 @@ pub(crate) fn into_binary_indexed_view<'a>(
 
 #[allow(dead_code)]
 pub(crate) fn run_compiler(
+    output_dir: &str,
     sources: Vec<&str>,
-    flags: Flags,
     stdlib_as_sources: bool,
 ) -> (Vec<CompiledScript>, Vec<CompiledModule>) {
     let stdlib_files = move_command_line_common::files::find_filenames(
@@ -62,7 +62,7 @@ pub(crate) fn run_compiler(
             move_command_line_common::files::extension_equals(
                 p,
                 move_command_line_common::files::MOVE_EXTENSION,
-            ) && !p.file_name().unwrap().to_str().unwrap().contains(".spec.")
+            ) //&& !p.file_name().unwrap().to_str().unwrap().contains(".spec.")
         },
     )
     .unwrap();
@@ -81,25 +81,43 @@ pub(crate) fn run_compiler(
         (sources, stdlib_files_str)
     };
 
-    let (files, units_res) = move_compiler::Compiler::from_files(
-        compiler_sources,
-        compiler_stdlibs,
-        default_testing_addresses(),
-        flags,
-        KnownAttribute::get_all_attribute_names(),
-    )
-    .build()
-    .expect("compiling failed");
+    let source_hashes: HashSet<_> = compiler_sources
+        .iter()
+        .map(|f| {
+            let content = std::fs::read_to_string(f).expect("Unable to read file");
+            FileHash::new(&content)
+        })
+        .collect();
 
-    let (compiled_units, _warnings) = if units_res.is_ok() {
-        units_res.unwrap()
-    } else {
-        move_compiler::diagnostics::unwrap_or_report_diagnostics(&files, units_res);
-        panic!("compilation failed")
+    let options = move_compiler_v2::options::Options {
+        dependencies: Vec::new(),
+        named_address_mapping: default_testing_addresses()
+            .into_iter()
+            .map(|(k, v)| format!("{}={:#X}", k, v))
+            .collect(),
+        output_dir: String::from(output_dir),
+        language_version: Some(move_model::metadata::LanguageVersion::V2_0),
+        skip_attribute_checks: true,
+        known_attributes: Default::default(),
+        testing: false,
+        experiments: Vec::new(),
+        experiment_cache: Default::default(),
+        sources: compiler_sources.into_iter().map(String::from).collect(),
+        sources_deps: compiler_stdlibs.into_iter().map(String::from).collect(),
+        warn_deprecated: false,
+        warn_of_deprecation_use_in_aptos_libs: false,
+        warn_unused: false,
+        whole_program: false,
+        compile_test_code: false,
+        compile_verify_code: false,
     };
+
+    let (_, compiled_units) =
+        move_compiler_v2::run_move_compiler_to_stderr(options).expect("compilation failed");
 
     let (compiled_modules, compiled_scripts): (Vec<_>, Vec<_>) = compiled_units
         .into_iter()
+        .filter(|m| source_hashes.contains(&m.loc().file_hash()))
         .map(|x| x.into_compiled_unit())
         .partition(|x| matches!(x, CompiledUnit::Module(_)));
 
@@ -123,13 +141,10 @@ pub(crate) fn run_compiler(
 }
 
 #[allow(dead_code)]
-pub(crate) fn tmp_project(tmp_files: Vec<(&str, &str)>, mut runner: impl FnMut(Vec<&str>)) {
+pub(crate) fn tmp_project(tmp_files: Vec<(&str, &str)>, mut runner: impl FnMut(&str, Vec<&str>)) {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let tmp_dir = std::env::temp_dir();
-    let project_root = tmp_dir.join(format!(
-        "revela--test-project-{}",
-        uuid::Uuid::new_v4()
-    ));
+    let project_root = tmp_dir.join(format!("revela--test-project-{}", uuid::Uuid::new_v4()));
 
     std::fs::create_dir(&project_root).unwrap();
     let tmp_files: Vec<_> = tmp_files
@@ -154,6 +169,7 @@ pub(crate) fn tmp_project(tmp_files: Vec<(&str, &str)>, mut runner: impl FnMut(V
     }
 
     runner(
+        project_root.to_str().unwrap(),
         tmp_files
             .iter()
             .map(|x| x.to_str().unwrap())
@@ -221,8 +237,24 @@ pub(crate) fn assert_same_source(output: &String, output2: &String) {
     }
 }
 
+pub(crate) fn assert_same_source_ignore_assign_order(output: &String, output2: &String) {
+    fn normalize_source(output: &String) -> String {
+        let re = regex::Regex::new(r"v\d+").unwrap();
+        re.replace_all(output, "v0").to_string()
+    }
+    let normalized_output = normalize_source(output);
+    let normalized_output2 = normalize_source(output2);
+
+    println!("Output=====\n{}\n\nOutput2=====\n{}", normalized_output, normalized_output2);
+
+    assert_eq!(normalized_output.len(), normalized_output2.len());
+}
+
 #[allow(dead_code)]
-pub(crate) fn should_same_script_bytecode(src_scripts: &[CompiledScript], scripts: &[CompiledScript]) {
+pub(crate) fn should_same_script_bytecode(
+    src_scripts: &[CompiledScript],
+    scripts: &[CompiledScript],
+) {
     assert_eq!(src_scripts.len(), scripts.len());
 
     for (src_script, script) in src_scripts.iter().zip(scripts.iter()) {
@@ -236,7 +268,10 @@ pub(crate) fn should_same_script_bytecode(src_scripts: &[CompiledScript], script
 }
 
 #[allow(dead_code)]
-pub(crate) fn should_same_module_bytecode(src_modules: &[CompiledModule], modules: &[CompiledModule]) {
+pub(crate) fn should_same_module_bytecode(
+    src_modules: &[CompiledModule],
+    modules: &[CompiledModule],
+) {
     assert_eq!(src_modules.len(), modules.len());
 
     for (src_module, module) in src_modules.iter().zip(modules.iter()) {

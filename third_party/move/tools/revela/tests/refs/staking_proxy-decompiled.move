@@ -63,5 +63,5 @@ module 0x1::staking_proxy {
         set_stake_pool_voter(arg0, arg2);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

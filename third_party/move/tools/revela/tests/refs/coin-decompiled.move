@@ -1,4 +1,22 @@
 module 0x1::coin {
+    struct Deposit<phantom T0> has drop, store {
+        account: address,
+        amount: u64,
+    }
+    
+    struct DepositEvent has drop, store {
+        amount: u64,
+    }
+    
+    struct Withdraw<phantom T0> has drop, store {
+        account: address,
+        amount: u64,
+    }
+    
+    struct WithdrawEvent has drop, store {
+        amount: u64,
+    }
+    
     struct AggregatableCoin<phantom T0> has store {
         value: 0x1::aggregator::Aggregator,
     }
@@ -51,15 +69,6 @@ module 0x1::coin {
         amount: u64,
     }
     
-    struct Deposit<phantom T0> has drop, store {
-        account: address,
-        amount: u64,
-    }
-    
-    struct DepositEvent has drop, store {
-        amount: u64,
-    }
-    
     struct FreezeCapability<phantom T0> has copy, store {
         dummy_field: bool,
     }
@@ -97,15 +106,6 @@ module 0x1::coin {
     
     struct TransferRefReceipt {
         metadata: 0x1::object::Object<0x1::fungible_asset::Metadata>,
-    }
-    
-    struct Withdraw<phantom T0> has drop, store {
-        account: address,
-        amount: u64,
-    }
-    
-    struct WithdrawEvent has drop, store {
-        amount: u64,
     }
     
     public fun burn_from<T0>(arg0: address, arg1: u64, arg2: &BurnCapability<T0>) acquires CoinConversionMap, CoinInfo, CoinStore, PairedFungibleAssetRefs {
@@ -157,7 +157,9 @@ module 0x1::coin {
     public fun deposit<T0>(arg0: address, arg1: Coin<T0>) acquires CoinConversionMap, CoinInfo, CoinStore {
         if (exists<CoinStore<T0>>(arg0)) {
             let v0 = borrow_global_mut<CoinStore<T0>>(arg0);
-            assert!(!v0.frozen, 0x1::error::permission_denied(10));
+            if (v0.frozen) {
+                abort 0x1::error::permission_denied(10)
+            };
             if (0x1::features::module_event_migration_enabled()) {
                 let v1 = CoinDeposit{
                     coin_type : 0x1::type_info::type_name<T0>(), 
@@ -174,20 +176,24 @@ module 0x1::coin {
             let v4 = if (0x1::option::is_some<0x1::object::Object<0x1::fungible_asset::Metadata>>(&v3)) {
                 let v5 = 0x1::option::destroy_some<0x1::object::Object<0x1::fungible_asset::Metadata>>(v3);
                 let v6 = 0x1::primary_fungible_store::primary_store_address<0x1::fungible_asset::Metadata>(arg0, v5);
-                let v7 = if (0x1::fungible_asset::store_exists(v6)) {
-                    let v8 = 0x1::features::new_accounts_default_to_fa_apt_store_enabled() || exists<MigrationFlag>(v6);
-                    v8
+                if (0x1::fungible_asset::store_exists(v6)) {
+                    if (0x1::features::new_accounts_default_to_fa_apt_store_enabled()) {
+                        true
+                    } else {
+                        exists<MigrationFlag>(v6)
+                    }
                 } else {
                     false
-                };
-                v7
+                }
             } else {
                 false
             };
             assert!(v4, 0x1::error::not_found(5));
-            let v9 = coin_to_fungible_asset<T0>(arg1);
-            0x1::primary_fungible_store::deposit(arg0, v9);
+            let v7 = coin_to_fungible_asset<T0>(arg1);
+            0x1::primary_fungible_store::deposit(arg0, v7);
         };
+        return
+        abort 0x1::error::permission_denied(10)
     }
     
     fun mint_internal<T0>(arg0: u64) : Coin<T0> acquires CoinInfo {
@@ -269,7 +275,9 @@ module 0x1::coin {
         };
         let v6 = if (v2 > 0) {
             let v7 = borrow_global_mut<CoinStore<T0>>(v0);
-            assert!(!v7.frozen, 0x1::error::permission_denied(10));
+            if (v7.frozen) {
+                abort 0x1::error::permission_denied(10)
+            };
             if (0x1::features::module_event_migration_enabled()) {
                 let v8 = CoinWithdraw{
                     coin_type : 0x1::type_info::type_name<T0>(), 
@@ -284,13 +292,12 @@ module 0x1::coin {
         } else {
             zero<T0>()
         };
-        let v10 = v6;
         if (v3 > 0) {
-            let v11 = paired_metadata<T0>();
-            let v12 = fungible_asset_to_coin<T0>(0x1::primary_fungible_store::withdraw<0x1::fungible_asset::Metadata>(arg0, 0x1::option::destroy_some<0x1::object::Object<0x1::fungible_asset::Metadata>>(v11), v3));
-            merge<T0>(&mut v10, v12);
+            let v10 = paired_metadata<T0>();
+            let v11 = fungible_asset_to_coin<T0>(0x1::primary_fungible_store::withdraw<0x1::fungible_asset::Metadata>(arg0, 0x1::option::destroy_some<0x1::object::Object<0x1::fungible_asset::Metadata>>(v10), v3));
+            merge<T0>(&mut v6, v11);
         };
-        v10
+        v6
     }
     
     public fun allow_supply_upgrades(arg0: &signer, arg1: bool) acquires SupplyConfig {
@@ -325,33 +332,37 @@ module 0x1::coin {
     public(friend) fun collect_into_aggregatable_coin<T0>(arg0: address, arg1: u64, arg2: &mut AggregatableCoin<T0>) acquires CoinConversionMap, CoinInfo, CoinStore, PairedCoinType {
         if (arg1 == 0) {
             return
-        };
-        let v0 = if (exists<CoinStore<T0>>(arg0)) {
-            borrow_global<CoinStore<T0>>(arg0).coin.value
         } else {
-            0
+            let v0 = if (exists<CoinStore<T0>>(arg0)) {
+                borrow_global<CoinStore<T0>>(arg0).coin.value
+            } else {
+                0
+            };
+            let (v1, v2) = if (v0 >= arg1) {
+                (arg1, 0)
+            } else {
+                let v3 = paired_metadata<T0>();
+                let v4 = 0x1::option::is_some<0x1::object::Object<0x1::fungible_asset::Metadata>>(&v3);
+                assert!(v4 && 0x1::primary_fungible_store::primary_store_exists<0x1::fungible_asset::Metadata>(arg0, 0x1::option::destroy_some<0x1::object::Object<0x1::fungible_asset::Metadata>>(v3)), v10);
+                (v0, arg1 - v0)
+            };
+            let v5 = if (v1 > 0) {
+                extract<T0>(&mut borrow_global_mut<CoinStore<T0>>(arg0).coin, v1)
+            } else {
+                zero<T0>()
+            };
+            if (v2 > 0) {
+                let v6 = paired_metadata<T0>();
+                let v7 = 0x1::option::destroy_some<0x1::object::Object<0x1::fungible_asset::Metadata>>(v6);
+                let v8 = 0x1::fungible_asset::withdraw_internal(0x1::primary_fungible_store::primary_store_address<0x1::fungible_asset::Metadata>(arg0, v7), v2);
+                let v9 = fungible_asset_to_coin<T0>(v8);
+                merge<T0>(&mut v5, v9);
+            };
+            merge_aggregatable_coin<T0>(arg2, v5);
+            return
+            let v10 = 0x1::error::invalid_argument(6);
+            abort v10
         };
-        let (v1, v2) = if (v0 >= arg1) {
-            (arg1, 0)
-        } else {
-            let v3 = paired_metadata<T0>();
-            let v4 = 0x1::option::is_some<0x1::object::Object<0x1::fungible_asset::Metadata>>(&v3);
-            assert!(v4 && 0x1::primary_fungible_store::primary_store_exists<0x1::fungible_asset::Metadata>(arg0, 0x1::option::destroy_some<0x1::object::Object<0x1::fungible_asset::Metadata>>(v3)), 0x1::error::invalid_argument(6));
-            (v0, arg1 - v0)
-        };
-        let v5 = if (v1 > 0) {
-            extract<T0>(&mut borrow_global_mut<CoinStore<T0>>(arg0).coin, v1)
-        } else {
-            zero<T0>()
-        };
-        let v6 = v5;
-        if (v2 > 0) {
-            let v7 = paired_metadata<T0>();
-            let v8 = 0x1::fungible_asset::withdraw_internal(0x1::primary_fungible_store::primary_store_address<0x1::fungible_asset::Metadata>(arg0, 0x1::option::destroy_some<0x1::object::Object<0x1::fungible_asset::Metadata>>(v7)), v2);
-            let v9 = fungible_asset_to_coin<T0>(v8);
-            merge<T0>(&mut v6, v9);
-        };
-        merge_aggregatable_coin<T0>(arg2, v6);
     }
     
     public fun convert_and_take_paired_burn_ref<T0>(arg0: BurnCapability<T0>) : 0x1::fungible_asset::BurnRef acquires CoinConversionMap, PairedFungibleAssetRefs {
@@ -369,7 +380,8 @@ module 0x1::coin {
     
     public entry fun create_coin_conversion_map(arg0: &signer) {
         0x1::system_addresses::assert_aptos_framework(arg0);
-        if (!exists<CoinConversionMap>(@0x1)) {
+        if (exists<CoinConversionMap>(@0x1)) {
+        } else {
             let v0 = 0x1::table::new<0x1::type_info::TypeInfo, 0x1::object::Object<0x1::fungible_asset::Metadata>>();
             let v1 = CoinConversionMap{coin_to_fungible_asset_map: v0};
             move_to<CoinConversionMap>(arg0, v1);
@@ -383,47 +395,47 @@ module 0x1::coin {
         let v0 = borrow_global_mut<CoinConversionMap>(@0x1);
         let v1 = 0x1::type_info::type_of<T0>();
         let v2 = &v0.coin_to_fungible_asset_map;
-        if (!0x1::table::contains<0x1::type_info::TypeInfo, 0x1::object::Object<0x1::fungible_asset::Metadata>>(v2, v1)) {
-            let v3 = 0x1::type_info::type_name<T0>() == 0x1::string::utf8(b"0x1::aptos_coin::AptosCoin");
-            assert!(!v3 || true, 0x1::error::invalid_state(28));
-            let v4 = if (v3) {
+        if (0x1::table::contains<0x1::type_info::TypeInfo, 0x1::object::Object<0x1::fungible_asset::Metadata>>(v2, v1)) {
+        } else {
+            let v3 = 0x1::string::utf8(b"0x1::aptos_coin::AptosCoin");
+            assert!(0x1::type_info::type_name<T0>() == v3 || true, 0x1::error::invalid_state(28));
+            let v4 = if (v25) {
                 0x1::object::create_sticky_object_at_address(@0x1, @0xa)
             } else {
                 let v5 = 0x1::create_signer::create_signer(@0xa);
                 let v6 = 0x1::type_info::type_name<T0>();
                 0x1::object::create_named_object(&v5, *0x1::string::bytes(&v6))
             };
-            let v7 = v4;
-            let v8 = 0x1::option::none<u128>();
-            let v9 = name<T0>();
-            let v10 = symbol<T0>();
-            let v11 = decimals<T0>();
+            let v7 = 0x1::option::none<u128>();
+            let v8 = name<T0>();
+            let v9 = symbol<T0>();
+            let v10 = decimals<T0>();
+            let v11 = 0x1::string::utf8(b"");
             let v12 = 0x1::string::utf8(b"");
-            let v13 = 0x1::string::utf8(b"");
-            0x1::primary_fungible_store::create_primary_store_enabled_fungible_asset(&v7, v8, v9, v10, v11, v12, v13);
-            let v14 = 0x1::object::generate_signer(&v7);
-            let v15 = &v14;
-            let v16 = 0x1::type_info::type_of<T0>();
-            let v17 = PairedCoinType{type: v16};
-            move_to<PairedCoinType>(v15, v17);
-            let v18 = 0x1::object::object_from_constructor_ref<0x1::fungible_asset::Metadata>(&v7);
-            let v19 = &mut v0.coin_to_fungible_asset_map;
-            0x1::table::add<0x1::type_info::TypeInfo, 0x1::object::Object<0x1::fungible_asset::Metadata>>(v19, v16, v18);
-            let v20 = 0x1::object::object_address<0x1::fungible_asset::Metadata>(&v18);
-            let v21 = PairCreation{
-                coin_type                       : v16, 
-                fungible_asset_metadata_address : v20,
+            0x1::primary_fungible_store::create_primary_store_enabled_fungible_asset(&v4, v7, v8, v9, v10, v11, v12);
+            let v13 = 0x1::object::generate_signer(&v4);
+            let v14 = &v13;
+            let v15 = 0x1::type_info::type_of<T0>();
+            let v16 = PairedCoinType{type: v15};
+            move_to<PairedCoinType>(v14, v16);
+            let v17 = 0x1::object::object_from_constructor_ref<0x1::fungible_asset::Metadata>(&v4);
+            let v18 = &mut v0.coin_to_fungible_asset_map;
+            0x1::table::add<0x1::type_info::TypeInfo, 0x1::object::Object<0x1::fungible_asset::Metadata>>(v18, v15, v17);
+            let v19 = 0x1::object::object_address<0x1::fungible_asset::Metadata>(&v17);
+            let v20 = PairCreation{
+                coin_type                       : v15, 
+                fungible_asset_metadata_address : v19,
             };
-            0x1::event::emit<PairCreation>(v21);
-            let v22 = 0x1::option::some<0x1::fungible_asset::MintRef>(0x1::fungible_asset::generate_mint_ref(&v7));
-            let v23 = 0x1::option::some<0x1::fungible_asset::TransferRef>(0x1::fungible_asset::generate_transfer_ref(&v7));
-            let v24 = 0x1::option::some<0x1::fungible_asset::BurnRef>(0x1::fungible_asset::generate_burn_ref(&v7));
-            let v25 = PairedFungibleAssetRefs{
-                mint_ref_opt     : v22, 
-                transfer_ref_opt : v23, 
-                burn_ref_opt     : v24,
+            0x1::event::emit<PairCreation>(v20);
+            let v21 = 0x1::option::some<0x1::fungible_asset::MintRef>(0x1::fungible_asset::generate_mint_ref(&v4));
+            let v22 = 0x1::option::some<0x1::fungible_asset::TransferRef>(0x1::fungible_asset::generate_transfer_ref(&v4));
+            let v23 = 0x1::option::some<0x1::fungible_asset::BurnRef>(0x1::fungible_asset::generate_burn_ref(&v4));
+            let v24 = PairedFungibleAssetRefs{
+                mint_ref_opt     : v21, 
+                transfer_ref_opt : v22, 
+                burn_ref_opt     : v23,
             };
-            move_to<PairedFungibleAssetRefs>(v15, v25);
+            move_to<PairedFungibleAssetRefs>(v14, v24);
         };
     }
     
@@ -461,50 +473,50 @@ module 0x1::coin {
         let v0 = borrow_global_mut<CoinConversionMap>(@0x1);
         let v1 = 0x1::type_info::type_of<T0>();
         let v2 = &v0.coin_to_fungible_asset_map;
-        if (!0x1::table::contains<0x1::type_info::TypeInfo, 0x1::object::Object<0x1::fungible_asset::Metadata>>(v2, v1)) {
-            let v3 = 0x1::type_info::type_name<T0>() == 0x1::string::utf8(b"0x1::aptos_coin::AptosCoin");
-            assert!(!v3 || false, 0x1::error::invalid_state(28));
-            let v4 = if (v3) {
+        if (0x1::table::contains<0x1::type_info::TypeInfo, 0x1::object::Object<0x1::fungible_asset::Metadata>>(v2, v1)) {
+        } else {
+            let v3 = 0x1::string::utf8(b"0x1::aptos_coin::AptosCoin");
+            assert!(0x1::type_info::type_name<T0>() == v3 && false || true, 0x1::error::invalid_state(28));
+            let v4 = if (v26) {
                 0x1::object::create_sticky_object_at_address(@0x1, @0xa)
             } else {
                 let v5 = 0x1::create_signer::create_signer(@0xa);
                 let v6 = 0x1::type_info::type_name<T0>();
                 0x1::object::create_named_object(&v5, *0x1::string::bytes(&v6))
             };
-            let v7 = v4;
-            let v8 = 0x1::option::none<u128>();
-            let v9 = name<T0>();
-            let v10 = symbol<T0>();
-            let v11 = decimals<T0>();
+            let v7 = 0x1::option::none<u128>();
+            let v8 = name<T0>();
+            let v9 = symbol<T0>();
+            let v10 = decimals<T0>();
+            let v11 = 0x1::string::utf8(b"");
             let v12 = 0x1::string::utf8(b"");
-            let v13 = 0x1::string::utf8(b"");
-            0x1::primary_fungible_store::create_primary_store_enabled_fungible_asset(&v7, v8, v9, v10, v11, v12, v13);
-            let v14 = 0x1::object::generate_signer(&v7);
-            let v15 = &v14;
-            let v16 = 0x1::type_info::type_of<T0>();
-            let v17 = PairedCoinType{type: v16};
-            move_to<PairedCoinType>(v15, v17);
-            let v18 = 0x1::object::object_from_constructor_ref<0x1::fungible_asset::Metadata>(&v7);
-            let v19 = &mut v0.coin_to_fungible_asset_map;
-            0x1::table::add<0x1::type_info::TypeInfo, 0x1::object::Object<0x1::fungible_asset::Metadata>>(v19, v16, v18);
-            let v20 = 0x1::object::object_address<0x1::fungible_asset::Metadata>(&v18);
-            let v21 = PairCreation{
-                coin_type                       : v16, 
-                fungible_asset_metadata_address : v20,
+            0x1::primary_fungible_store::create_primary_store_enabled_fungible_asset(&v4, v7, v8, v9, v10, v11, v12);
+            let v13 = 0x1::object::generate_signer(&v4);
+            let v14 = &v13;
+            let v15 = 0x1::type_info::type_of<T0>();
+            let v16 = PairedCoinType{type: v15};
+            move_to<PairedCoinType>(v14, v16);
+            let v17 = 0x1::object::object_from_constructor_ref<0x1::fungible_asset::Metadata>(&v4);
+            let v18 = &mut v0.coin_to_fungible_asset_map;
+            0x1::table::add<0x1::type_info::TypeInfo, 0x1::object::Object<0x1::fungible_asset::Metadata>>(v18, v15, v17);
+            let v19 = 0x1::object::object_address<0x1::fungible_asset::Metadata>(&v17);
+            let v20 = PairCreation{
+                coin_type                       : v15, 
+                fungible_asset_metadata_address : v19,
             };
-            0x1::event::emit<PairCreation>(v21);
-            let v22 = 0x1::option::some<0x1::fungible_asset::MintRef>(0x1::fungible_asset::generate_mint_ref(&v7));
-            let v23 = 0x1::option::some<0x1::fungible_asset::TransferRef>(0x1::fungible_asset::generate_transfer_ref(&v7));
-            let v24 = 0x1::option::some<0x1::fungible_asset::BurnRef>(0x1::fungible_asset::generate_burn_ref(&v7));
-            let v25 = PairedFungibleAssetRefs{
-                mint_ref_opt     : v22, 
-                transfer_ref_opt : v23, 
-                burn_ref_opt     : v24,
+            0x1::event::emit<PairCreation>(v20);
+            let v21 = 0x1::option::some<0x1::fungible_asset::MintRef>(0x1::fungible_asset::generate_mint_ref(&v4));
+            let v22 = 0x1::option::some<0x1::fungible_asset::TransferRef>(0x1::fungible_asset::generate_transfer_ref(&v4));
+            let v23 = 0x1::option::some<0x1::fungible_asset::BurnRef>(0x1::fungible_asset::generate_burn_ref(&v4));
+            let v24 = PairedFungibleAssetRefs{
+                mint_ref_opt     : v21, 
+                transfer_ref_opt : v22, 
+                burn_ref_opt     : v23,
             };
-            move_to<PairedFungibleAssetRefs>(v15, v25);
+            move_to<PairedFungibleAssetRefs>(v14, v24);
         };
-        let v26 = &v0.coin_to_fungible_asset_map;
-        *0x1::table::borrow<0x1::type_info::TypeInfo, 0x1::object::Object<0x1::fungible_asset::Metadata>>(v26, v1)
+        let v25 = &v0.coin_to_fungible_asset_map;
+        *0x1::table::borrow<0x1::type_info::TypeInfo, 0x1::object::Object<0x1::fungible_asset::Metadata>>(v25, v1)
     }
     
     public fun extract_all<T0>(arg0: &mut Coin<T0>) : Coin<T0> {
@@ -520,22 +532,24 @@ module 0x1::coin {
             let v1 = if (0x1::option::is_some<0x1::object::Object<0x1::fungible_asset::Metadata>>(&v0)) {
                 let v2 = 0x1::option::destroy_some<0x1::object::Object<0x1::fungible_asset::Metadata>>(v0);
                 let v3 = 0x1::primary_fungible_store::primary_store_address<0x1::fungible_asset::Metadata>(arg0, v2);
-                let v4 = if (0x1::fungible_asset::store_exists(v3)) {
-                    let v5 = 0x1::features::new_accounts_default_to_fa_apt_store_enabled() || exists<MigrationFlag>(v3);
-                    v5
+                if (0x1::fungible_asset::store_exists(v3)) {
+                    if (0x1::features::new_accounts_default_to_fa_apt_store_enabled()) {
+                        true
+                    } else {
+                        exists<MigrationFlag>(v3)
+                    }
                 } else {
                     false
-                };
-                v4
+                }
             } else {
                 false
             };
             assert!(v1, 0x1::error::not_found(5));
-            let v6 = coin_to_fungible_asset<T0>(arg1);
-            let v7 = 0x1::fungible_asset::asset_metadata(&v6);
-            let v8 = 0x1::primary_fungible_store::primary_store<0x1::fungible_asset::Metadata>(arg0, v7);
-            let v9 = 0x1::object::object_address<0x1::fungible_asset::FungibleStore>(&v8);
-            0x1::fungible_asset::deposit_internal(v9, v6);
+            let v4 = coin_to_fungible_asset<T0>(arg1);
+            let v5 = 0x1::fungible_asset::asset_metadata(&v4);
+            let v6 = 0x1::primary_fungible_store::primary_store<0x1::fungible_asset::Metadata>(arg0, v5);
+            let v7 = 0x1::object::object_address<0x1::fungible_asset::FungibleStore>(&v6);
+            0x1::fungible_asset::deposit_internal(v7, v4);
         };
     }
     
@@ -602,7 +616,9 @@ module 0x1::coin {
     fun initialize_internal<T0>(arg0: &signer, arg1: 0x1::string::String, arg2: 0x1::string::String, arg3: u8, arg4: bool, arg5: bool) : (BurnCapability<T0>, FreezeCapability<T0>, MintCapability<T0>) {
         let v0 = 0x1::signer::address_of(arg0);
         assert!(coin_address<T0>() == v0, 0x1::error::invalid_argument(1));
-        assert!(!exists<CoinInfo<T0>>(v0), 0x1::error::already_exists(2));
+        if (exists<CoinInfo<T0>>(v0)) {
+            abort 0x1::error::already_exists(2)
+        };
         assert!(0x1::string::length(&arg1) <= 32, 0x1::error::invalid_argument(12));
         assert!(0x1::string::length(&arg2) <= 10, 0x1::error::invalid_argument(13));
         let v1 = if (arg4) {
@@ -640,20 +656,21 @@ module 0x1::coin {
             true
         } else {
             let v1 = paired_metadata<T0>();
-            let v2 = if (0x1::option::is_some<0x1::object::Object<0x1::fungible_asset::Metadata>>(&v1)) {
-                let v3 = 0x1::option::destroy_some<0x1::object::Object<0x1::fungible_asset::Metadata>>(v1);
-                let v4 = 0x1::primary_fungible_store::primary_store_address<0x1::fungible_asset::Metadata>(arg0, v3);
-                let v5 = if (0x1::fungible_asset::store_exists(v4)) {
-                    let v6 = 0x1::features::new_accounts_default_to_fa_apt_store_enabled() || exists<MigrationFlag>(v4);
-                    v6
+            if (0x1::option::is_some<0x1::object::Object<0x1::fungible_asset::Metadata>>(&v1)) {
+                let v2 = 0x1::option::destroy_some<0x1::object::Object<0x1::fungible_asset::Metadata>>(v1);
+                let v3 = 0x1::primary_fungible_store::primary_store_address<0x1::fungible_asset::Metadata>(arg0, v2);
+                if (0x1::fungible_asset::store_exists(v3)) {
+                    if (0x1::features::new_accounts_default_to_fa_apt_store_enabled()) {
+                        true
+                    } else {
+                        exists<MigrationFlag>(v3)
+                    }
                 } else {
                     false
-                };
-                v5
+                }
             } else {
                 false
-            };
-            v2
+            }
         }
     }
     
@@ -666,17 +683,14 @@ module 0x1::coin {
     }
     
     public fun is_coin_store_frozen<T0>(arg0: address) : bool acquires CoinConversionMap, CoinStore {
-        let v0 = is_account_registered<T0>(arg0);
-        if (!v0) {
-            return true
+        if (is_account_registered<T0>(arg0)) {
+            return borrow_global<CoinStore<T0>>(arg0).frozen
         };
-        borrow_global<CoinStore<T0>>(arg0).frozen
+        true
     }
     
     fun maybe_convert_to_fungible_store<T0>(arg0: address) acquires CoinConversionMap, CoinInfo, CoinStore {
-        if (!0x1::features::coin_to_fungible_asset_migration_feature_enabled()) {
-            abort 0x1::error::unavailable(18)
-        };
+        assert!(0x1::features::coin_to_fungible_asset_migration_feature_enabled(), 0x1::error::unavailable(18));
         assert!(is_coin_initialized<T0>(), 0x1::error::invalid_argument(3));
         let v0 = ensure_paired_metadata<T0>();
         let v1 = 0x1::primary_fungible_store::ensure_primary_store_exists<0x1::fungible_asset::Metadata>(arg0, v0);
@@ -712,7 +726,8 @@ module 0x1::coin {
                 0x1::fungible_asset::set_frozen_flag_internal<0x1::fungible_asset::FungibleStore>(v1, v4);
             };
         };
-        if (!exists<MigrationFlag>(v2)) {
+        if (exists<MigrationFlag>(v2)) {
+        } else {
             let v15 = 0x1::create_signer::create_signer(v2);
             let v16 = MigrationFlag{dummy_field: false};
             move_to<MigrationFlag>(&v15, v16);
@@ -857,7 +872,8 @@ module 0x1::coin {
         let v1 = &mut borrow_global_mut<CoinInfo<T0>>(v0).supply;
         if (0x1::option::is_some<0x1::optional_aggregator::OptionalAggregator>(v1)) {
             let v2 = 0x1::option::borrow_mut<0x1::optional_aggregator::OptionalAggregator>(v1);
-            if (!0x1::optional_aggregator::is_parallelizable(v2)) {
+            if (0x1::optional_aggregator::is_parallelizable(v2)) {
+            } else {
                 0x1::optional_aggregator::switch(v2);
             };
         };
@@ -871,5 +887,5 @@ module 0x1::coin {
         Coin<T0>{value: 0}
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

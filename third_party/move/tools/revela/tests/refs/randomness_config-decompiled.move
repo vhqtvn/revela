@@ -33,7 +33,8 @@ module 0x1::randomness_config {
     
     public fun initialize(arg0: &signer, arg1: RandomnessConfig) {
         0x1::system_addresses::assert_aptos_framework(arg0);
-        if (!exists<RandomnessConfig>(@0x1)) {
+        if (exists<RandomnessConfig>(@0x1)) {
+        } else {
             move_to<RandomnessConfig>(arg0, arg1);
         };
     }
@@ -76,5 +77,5 @@ module 0x1::randomness_config {
         0x1::config_buffer::upsert<RandomnessConfig>(arg1);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

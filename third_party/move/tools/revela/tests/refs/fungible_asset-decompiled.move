@@ -1,4 +1,12 @@
 module 0x1::fungible_asset {
+    struct TransferRef has drop, store {
+        metadata: 0x1::object::Object<Metadata>,
+    }
+    
+    struct Untransferable has key {
+        dummy_field: bool,
+    }
+    
     struct BurnRef has drop, store {
         metadata: 0x1::object::Object<Metadata>,
     }
@@ -77,14 +85,6 @@ module 0x1::fungible_asset {
         maximum: 0x1::option::Option<u128>,
     }
     
-    struct TransferRef has drop, store {
-        metadata: 0x1::object::Object<Metadata>,
-    }
-    
-    struct Untransferable has key {
-        dummy_field: bool,
-    }
-    
     struct Withdraw has drop, store {
         store: address,
         amount: u64,
@@ -112,7 +112,9 @@ module 0x1::fungible_asset {
     }
     
     public fun add_fungibility(arg0: &0x1::object::ConstructorRef, arg1: 0x1::option::Option<u128>, arg2: 0x1::string::String, arg3: 0x1::string::String, arg4: u8, arg5: 0x1::string::String, arg6: 0x1::string::String) : 0x1::object::Object<Metadata> {
-        assert!(!0x1::object::can_generate_delete_ref(arg0), 0x1::error::invalid_argument(18));
+        if (0x1::object::can_generate_delete_ref(arg0)) {
+            abort 0x1::error::invalid_argument(18)
+        };
         let v0 = 0x1::object::generate_signer(arg0);
         let v1 = &v0;
         assert!(0x1::string::length(&arg2) <= 32, 0x1::error::out_of_range(15));
@@ -165,12 +167,11 @@ module 0x1::fungible_asset {
             let v2 = 0x1::object::object_address<T0>(&arg0);
             assert!(exists<FungibleStore>(v2), 0x1::error::not_found(23));
             let v3 = borrow_global<FungibleStore>(v2).balance;
-            let v4 = if (v3 == 0 && exists<ConcurrentFungibleBalance>(v0)) {
+            if (v3 == 0 && exists<ConcurrentFungibleBalance>(v0)) {
                 0x1::aggregator_v2::read<u64>(&borrow_global<ConcurrentFungibleBalance>(v0).balance)
             } else {
                 v3
-            };
-            v4
+            }
         } else {
             0
         }
@@ -283,14 +284,16 @@ module 0x1::fungible_asset {
         let v0 = 0x1::object::object_address<T0>(&arg0);
         assert!(exists<FungibleStore>(v0), 0x1::error::not_found(23));
         let v1 = borrow_global<FungibleStore>(v0);
-        let v2 = if (!arg1) {
-            true
+        if (arg1) {
+            let v2 = has_deposit_dispatch_function(v1.metadata);
+            arg1 = !v2;
         } else {
-            let v3 = has_deposit_dispatch_function(v1.metadata);
-            !v3
+            arg1 = true;
         };
-        assert!(v2, 0x1::error::invalid_argument(28));
-        assert!(!v1.frozen, 0x1::error::permission_denied(3));
+        assert!(arg1, 0x1::error::invalid_argument(28));
+        if (v1.frozen) {
+            abort 0x1::error::permission_denied(3)
+        };
     }
     
     public fun deposit_with_ref<T0: key>(arg0: &TransferRef, arg1: 0x1::object::Object<T0>, arg2: FungibleAsset) acquires ConcurrentFungibleBalance, FungibleStore {
@@ -356,14 +359,24 @@ module 0x1::fungible_asset {
     
     fun has_deposit_dispatch_function(arg0: 0x1::object::Object<Metadata>) : bool acquires DispatchFunctionStore {
         let v0 = 0x1::object::object_address<Metadata>(&arg0);
-        let v1 = v0 != @0xa;
-        v1 && exists<DispatchFunctionStore>(v0) && 0x1::option::is_some<0x1::function_info::FunctionInfo>(&borrow_global<DispatchFunctionStore>(v0).deposit_function)
+        if (v0 != @0xa && exists<DispatchFunctionStore>(v0)) {
+            let v1 = &borrow_global<DispatchFunctionStore>(v0).deposit_function;
+            v2 = 0x1::option::is_some<0x1::function_info::FunctionInfo>(v1);
+        } else {
+            v2 = false;
+        };
+        v2
     }
     
     fun has_withdraw_dispatch_function(arg0: 0x1::object::Object<Metadata>) : bool acquires DispatchFunctionStore {
         let v0 = 0x1::object::object_address<Metadata>(&arg0);
-        let v1 = v0 != @0xa;
-        v1 && exists<DispatchFunctionStore>(v0) && 0x1::option::is_some<0x1::function_info::FunctionInfo>(&borrow_global<DispatchFunctionStore>(v0).withdraw_function)
+        if (v0 != @0xa && exists<DispatchFunctionStore>(v0)) {
+            let v1 = &borrow_global<DispatchFunctionStore>(v0).withdraw_function;
+            v2 = 0x1::option::is_some<0x1::function_info::FunctionInfo>(v1);
+        } else {
+            v2 = false;
+        };
+        v2
     }
     
     public fun icon_uri<T0: key>(arg0: 0x1::object::Object<T0>) : 0x1::string::String acquires Metadata {
@@ -393,9 +406,12 @@ module 0x1::fungible_asset {
     public(friend) fun is_address_balance_at_least(arg0: address, arg1: u64) : bool acquires ConcurrentFungibleBalance, FungibleStore {
         if (exists<FungibleStore>(arg0)) {
             let v1 = borrow_global<FungibleStore>(arg0).balance;
-            let v2 = v1 == 0;
-            let v3 = v2 && exists<ConcurrentFungibleBalance>(arg0) && 0x1::aggregator_v2::is_at_least<u64>(&borrow_global<ConcurrentFungibleBalance>(arg0).balance, arg1) || v1 >= arg1;
-            v3
+            if (v1 == 0 && exists<ConcurrentFungibleBalance>(arg0)) {
+                v0 = 0x1::aggregator_v2::is_at_least<u64>(&borrow_global<ConcurrentFungibleBalance>(arg0).balance, arg1);
+            } else {
+                v0 = v1 >= arg1;
+            };
+            v0
         } else {
             arg1 == 0
         }
@@ -425,19 +441,17 @@ module 0x1::fungible_asset {
         let v0 = 0x1::object::object_address<T0>(&arg0);
         if (exists<ConcurrentSupply>(v0)) {
             let v2 = 0x1::aggregator_v2::max_value<u128>(&borrow_global<ConcurrentSupply>(v0).current);
-            let v3 = if (v2 == 340282366920938463463374607431768211455) {
+            if (v2 == 340282366920938463463374607431768211455) {
                 0x1::option::none<u128>()
             } else {
                 0x1::option::some<u128>(v2)
-            };
-            v3
+            }
         } else {
-            let v4 = if (exists<Supply>(v0)) {
+            if (exists<Supply>(v0)) {
                 borrow_global<Supply>(v0).maximum
             } else {
                 0x1::option::none<u128>()
-            };
-            v4
+            }
         }
     }
     
@@ -516,17 +530,23 @@ module 0x1::fungible_asset {
         if (0x1::option::is_some<0x1::function_info::FunctionInfo>(v0)) {
             let v1 = 0x1::option::borrow<0x1::function_info::FunctionInfo>(v0);
             let v2 = 0x1::string::utf8(b"dispatchable_fungible_asset");
-            let v3 = 0x1::function_info::new_function_info_from_address(@0x1, v2, 0x1::string::utf8(b"dispatchable_derived_supply"));
-            let v4 = 0x1::function_info::check_dispatch_type_compatibility(&v3, v1);
-            assert!(v4, 0x1::error::invalid_argument(33));
+            let v3 = 0x1::string::utf8(b"dispatchable_derived_supply");
+            let v4 = 0x1::function_info::new_function_info_from_address(@0x1, v2, v3);
+            let v5 = 0x1::function_info::check_dispatch_type_compatibility(&v4, v1);
+            assert!(v5, 0x1::error::invalid_argument(33));
         };
         assert!(0x1::object::address_from_constructor_ref(arg0) != @0xa, 0x1::error::permission_denied(31));
-        assert!(!0x1::object::can_generate_delete_ref(arg0), 0x1::error::invalid_argument(18));
-        assert!(exists<Metadata>(0x1::object::address_from_constructor_ref(arg0)), 0x1::error::not_found(30));
-        assert!(!exists<DeriveSupply>(0x1::object::address_from_constructor_ref(arg0)), 0x1::error::already_exists(29));
-        let v5 = 0x1::object::generate_signer(arg0);
-        let v6 = DeriveSupply{dispatch_function: arg1};
-        move_to<DeriveSupply>(&v5, v6);
+        if (0x1::object::can_generate_delete_ref(arg0)) {
+            abort 0x1::error::invalid_argument(18)
+        };
+        let v6 = exists<Metadata>(0x1::object::address_from_constructor_ref(arg0));
+        assert!(v6, 0x1::error::not_found(30));
+        if (exists<DeriveSupply>(0x1::object::address_from_constructor_ref(arg0))) {
+            abort 0x1::error::already_exists(29)
+        };
+        let v7 = 0x1::object::generate_signer(arg0);
+        let v8 = DeriveSupply{dispatch_function: arg1};
+        move_to<DeriveSupply>(&v7, v8);
     }
     
     public(friend) fun register_dispatch_functions(arg0: &0x1::object::ConstructorRef, arg1: 0x1::option::Option<0x1::function_info::FunctionInfo>, arg2: 0x1::option::Option<0x1::function_info::FunctionInfo>, arg3: 0x1::option::Option<0x1::function_info::FunctionInfo>) {
@@ -546,9 +566,13 @@ module 0x1::fungible_asset {
             assert!(0x1::function_info::check_dispatch_type_compatibility(&v5, 0x1::option::borrow<0x1::function_info::FunctionInfo>(v4)), 0x1::error::invalid_argument(27));
         };
         assert!(0x1::object::address_from_constructor_ref(arg0) != @0xa, 0x1::error::permission_denied(31));
-        assert!(!0x1::object::can_generate_delete_ref(arg0), 0x1::error::invalid_argument(18));
+        if (0x1::object::can_generate_delete_ref(arg0)) {
+            abort 0x1::error::invalid_argument(18)
+        };
         assert!(exists<Metadata>(0x1::object::address_from_constructor_ref(arg0)), 0x1::error::not_found(30));
-        assert!(!exists<DispatchFunctionStore>(0x1::object::address_from_constructor_ref(arg0)), 0x1::error::already_exists(29));
+        if (exists<DispatchFunctionStore>(0x1::object::address_from_constructor_ref(arg0))) {
+            abort 0x1::error::already_exists(29)
+        };
         let v6 = 0x1::object::generate_signer(arg0);
         let v7 = DispatchFunctionStore{
             withdraw_function        : arg1, 
@@ -614,12 +638,11 @@ module 0x1::fungible_asset {
         if (exists<ConcurrentSupply>(v0)) {
             0x1::option::some<u128>(0x1::aggregator_v2::read<u128>(&borrow_global<ConcurrentSupply>(v0).current))
         } else {
-            let v2 = if (exists<Supply>(v0)) {
+            if (exists<Supply>(v0)) {
                 0x1::option::some<u128>(borrow_global<Supply>(v0).current)
             } else {
                 0x1::option::none<u128>()
-            };
-            v2
+            }
         }
     }
     
@@ -644,8 +667,9 @@ module 0x1::fungible_asset {
     public entry fun upgrade_store_to_concurrent<T0: key>(arg0: &signer, arg1: 0x1::object::Object<T0>) acquires FungibleStore {
         let v0 = 0x1::object::owns<T0>(arg1, 0x1::signer::address_of(arg0));
         assert!(v0, 0x1::error::permission_denied(8));
-        let v1 = is_frozen<T0>(arg1);
-        assert!(!v1, 0x1::error::invalid_argument(3));
+        if (is_frozen<T0>(arg1)) {
+            abort 0x1::error::invalid_argument(3)
+        };
         assert!(0x1::features::concurrent_fungible_balance_enabled(), 0x1::error::invalid_argument(32));
         ensure_store_upgraded_to_concurrent_internal(0x1::object::object_address<T0>(&arg1));
     }
@@ -714,14 +738,16 @@ module 0x1::fungible_asset {
         let v1 = 0x1::object::object_address<T0>(&arg1);
         assert!(exists<FungibleStore>(v1), 0x1::error::not_found(23));
         let v2 = borrow_global<FungibleStore>(v1);
-        let v3 = if (!arg2) {
-            true
+        if (arg2) {
+            let v3 = has_withdraw_dispatch_function(v2.metadata);
+            arg2 = !v3;
         } else {
-            let v4 = has_withdraw_dispatch_function(v2.metadata);
-            !v4
+            arg2 = true;
         };
-        assert!(v3, 0x1::error::invalid_argument(28));
-        assert!(!v2.frozen, 0x1::error::permission_denied(3));
+        assert!(arg2, 0x1::error::invalid_argument(28));
+        if (v2.frozen) {
+            abort 0x1::error::permission_denied(3)
+        };
     }
     
     public fun withdraw_with_ref<T0: key>(arg0: &TransferRef, arg1: 0x1::object::Object<T0>, arg2: u64) : FungibleAsset acquires ConcurrentFungibleBalance, FungibleStore {
@@ -737,5 +763,5 @@ module 0x1::fungible_asset {
         }
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

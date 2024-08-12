@@ -41,7 +41,8 @@ module 0x1::dkg {
     
     public fun initialize(arg0: &signer) {
         0x1::system_addresses::assert_aptos_framework(arg0);
-        if (!exists<DKGState>(@0x1)) {
+        if (exists<DKGState>(@0x1)) {
+        } else {
             let v0 = 0x1::option::none<DKGSessionState>();
             let v1 = DKGState{
                 last_completed : 0x1::option::none<DKGSessionState>(), 
@@ -66,7 +67,7 @@ module 0x1::dkg {
         let v2 = DKGSessionState{
             metadata      : v0, 
             start_time_us : v1, 
-            transcript    : b"",
+            transcript    : 0x1::vector::empty<u8>(),
         };
         borrow_global_mut<DKGState>(@0x1).in_progress = 0x1::option::some<DKGSessionState>(v2);
         let v3 = DKGStartEvent{
@@ -83,5 +84,5 @@ module 0x1::dkg {
         };
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

@@ -31,5 +31,5 @@ module 0x12::TestLiveVars {
         test1(arg1)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

@@ -45,5 +45,5 @@ module 0x1::randomness_api_v0_config {
         0x1::config_buffer::upsert<RequiredGasDeposit>(v0);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

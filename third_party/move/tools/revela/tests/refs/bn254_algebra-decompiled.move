@@ -3,14 +3,6 @@ module 0x1::bn254_algebra {
         dummy_field: bool,
     }
     
-    struct FormatFqLsb {
-        dummy_field: bool,
-    }
-    
-    struct FormatFqMsb {
-        dummy_field: bool,
-    }
-    
     struct FormatFrLsb {
         dummy_field: bool,
     }
@@ -39,10 +31,6 @@ module 0x1::bn254_algebra {
         dummy_field: bool,
     }
     
-    struct Fq {
-        dummy_field: bool,
-    }
-    
     struct Fq12 {
         dummy_field: bool,
     }
@@ -63,5 +51,17 @@ module 0x1::bn254_algebra {
         dummy_field: bool,
     }
     
-    // decompiled from Move bytecode v6
+    struct FormatFqLsb {
+        dummy_field: bool,
+    }
+    
+    struct FormatFqMsb {
+        dummy_field: bool,
+    }
+    
+    struct Fq {
+        dummy_field: bool,
+    }
+    
+    // decompiled from Move bytecode v7
 }

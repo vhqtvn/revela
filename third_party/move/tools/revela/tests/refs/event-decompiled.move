@@ -37,5 +37,5 @@ module 0x1::event {
     
     native fun write_module_event_to_store<T0: drop + store>(arg0: T0);
     native fun write_to_event_store<T0: drop + store>(arg0: vector<u8>, arg1: u64, arg2: T0);
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

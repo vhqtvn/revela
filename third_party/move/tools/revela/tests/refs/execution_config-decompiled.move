@@ -34,5 +34,5 @@ module 0x1::execution_config {
         0x1::config_buffer::upsert<ExecutionConfig>(v0);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

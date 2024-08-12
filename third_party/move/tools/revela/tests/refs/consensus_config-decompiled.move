@@ -41,5 +41,5 @@ module 0x1::consensus_config {
     }
     
     native fun validator_txn_enabled_internal(arg0: vector<u8>) : bool;
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

@@ -174,5 +174,5 @@ module 0x1::crypto_algebra {
     }
     
     native fun zero_internal<T0>() : u64;
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

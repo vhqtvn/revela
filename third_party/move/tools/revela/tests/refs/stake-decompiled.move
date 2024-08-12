@@ -262,7 +262,7 @@ module 0x1::stake {
     }
     
     fun addresses_from_validator_infos(arg0: &vector<ValidatorInfo>) : vector<address> {
-        let v0 = vector[];
+        let v0 = 0x1::vector::empty<address>();
         let v1 = 0;
         while (v1 < 0x1::vector::length<ValidatorInfo>(arg0)) {
             0x1::vector::push_back<address>(&mut v0, 0x1::vector::borrow<ValidatorInfo>(arg0, v1).addr);
@@ -272,7 +272,10 @@ module 0x1::stake {
     }
     
     fun append<T0>(arg0: &mut vector<T0>, arg1: &mut vector<T0>) {
-        while (!0x1::vector::is_empty<T0>(arg1)) {
+        loop {
+            if (0x1::vector::is_empty<T0>(arg1)) {
+                break
+            };
             0x1::vector::push_back<T0>(arg0, 0x1::vector::pop_back<T0>(arg1));
         };
     }
@@ -282,7 +285,9 @@ module 0x1::stake {
     }
     
     fun assert_reconfig_not_in_progress() {
-        assert!(!0x1::reconfiguration_state::is_in_progress(), 0x1::error::invalid_state(20));
+        if (0x1::reconfiguration_state::is_in_progress()) {
+            abort 0x1::error::invalid_state(20)
+        };
     }
     
     fun assert_stake_pool_exists(arg0: address) {
@@ -292,20 +297,22 @@ module 0x1::stake {
     fun calculate_rewards_amount(arg0: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64) : u64 {
         let v0 = (arg4 as u128) * (arg2 as u128);
         if (v0 > 0) {
-            (((arg0 as u128) * (arg3 as u128) * (arg1 as u128) / v0) as u64)
+            let v1 = (arg0 as u128) * (arg3 as u128) * (arg1 as u128) / v0;
+            arg0 = (v1 as u64);
         } else {
-            0
-        }
+            arg0 = 0;
+        };
+        arg0
     }
     
     public fun configure_allowed_validators(arg0: &signer, arg1: vector<address>) acquires AllowedValidators {
         let v0 = 0x1::signer::address_of(arg0);
         0x1::system_addresses::assert_aptos_framework(arg0);
-        if (!exists<AllowedValidators>(v0)) {
+        if (exists<AllowedValidators>(v0)) {
+            borrow_global_mut<AllowedValidators>(v0).accounts = arg1;
+        } else {
             let v1 = AllowedValidators{accounts: arg1};
             move_to<AllowedValidators>(arg0, v1);
-        } else {
-            borrow_global_mut<AllowedValidators>(v0).accounts = arg1;
         };
     }
     
@@ -314,7 +321,9 @@ module 0x1::stake {
     }
     
     public fun deposit_owner_cap(arg0: &signer, arg1: OwnerCapability) {
-        assert!(!exists<OwnerCapability>(0x1::signer::address_of(arg0)), 0x1::error::not_found(16));
+        if (exists<OwnerCapability>(0x1::signer::address_of(arg0))) {
+            abort 0x1::error::not_found(16)
+        };
         move_to<OwnerCapability>(arg0, arg1);
     }
     
@@ -448,18 +457,16 @@ module 0x1::stake {
             1
         } else {
             let v3 = find_validator(&v0.active_validators, arg0);
-            let v4 = if (0x1::option::is_some<u64>(&v3)) {
+            if (0x1::option::is_some<u64>(&v3)) {
                 2
             } else {
-                let v5 = find_validator(&v0.pending_inactive, arg0);
-                let v6 = if (0x1::option::is_some<u64>(&v5)) {
+                let v4 = find_validator(&v0.pending_inactive, arg0);
+                if (0x1::option::is_some<u64>(&v4)) {
                     3
                 } else {
                     4
-                };
-                v6
-            };
-            v4
+                }
+            }
         }
     }
     
@@ -515,7 +522,9 @@ module 0x1::stake {
     fun initialize_owner(arg0: &signer) acquires AllowedValidators {
         let v0 = 0x1::signer::address_of(arg0);
         assert!(is_allowed(v0), 0x1::error::not_found(17));
-        assert!(!stake_pool_exists(v0), 0x1::error::already_exists(8));
+        if (stake_pool_exists(v0)) {
+            abort 0x1::error::already_exists(8)
+        };
         let v1 = 0x1::coin::zero<0x1::aptos_coin::AptosCoin>();
         let v2 = 0x1::coin::zero<0x1::aptos_coin::AptosCoin>();
         let v3 = 0x1::coin::zero<0x1::aptos_coin::AptosCoin>();
@@ -598,14 +607,16 @@ module 0x1::stake {
     
     public(friend) fun initialize_validator_fees(arg0: &signer) {
         0x1::system_addresses::assert_aptos_framework(arg0);
-        assert!(!exists<ValidatorFees>(@0x1), 0x1::error::already_exists(19));
+        if (exists<ValidatorFees>(@0x1)) {
+            abort 0x1::error::already_exists(19)
+        };
         let v0 = ValidatorFees{fees_table: 0x1::table::new<address, 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>>()};
         move_to<ValidatorFees>(arg0, v0);
     }
     
     fun is_allowed(arg0: address) : bool acquires AllowedValidators {
         let v0 = exists<AllowedValidators>(@0x1);
-        !v0 || 0x1::vector::contains<address>(&borrow_global<AllowedValidators>(@0x1).accounts, &arg0)
+        v0 && 0x1::vector::contains<address>(&borrow_global<AllowedValidators>(@0x1).accounts, &arg0) || true
     }
     
     public fun is_current_epoch_validator(arg0: address) : bool acquires ValidatorSet {
@@ -634,7 +645,9 @@ module 0x1::stake {
         assert!(v5 <= v4, 0x1::error::invalid_argument(3));
         update_voting_power_increase(v5);
         let v6 = borrow_global_mut<ValidatorConfig>(arg1);
-        assert!(!0x1::vector::is_empty<u8>(&v6.consensus_pubkey), 0x1::error::invalid_argument(11));
+        if (0x1::vector::is_empty<u8>(&v6.consensus_pubkey)) {
+            abort 0x1::error::invalid_argument(11)
+        };
         let v7 = borrow_global_mut<ValidatorSet>(@0x1);
         let v8 = generate_validator_info(arg1, v0, *v6);
         0x1::vector::push_back<ValidatorInfo>(&mut v7.pending_active, v8);
@@ -755,14 +768,15 @@ module 0x1::stake {
         let v3 = &v0.active_validators;
         let v4 = 0;
         while (v4 < 0x1::vector::length<ValidatorInfo>(v3)) {
-            update_stake_pool(v2, 0x1::vector::borrow<ValidatorInfo>(v3, v4).addr, &v1);
+            let v5 = 0x1::vector::borrow<ValidatorInfo>(v3, v4).addr;
+            update_stake_pool(v2, v5, &v1);
             v4 = v4 + 1;
         };
-        let v5 = &v0.pending_inactive;
-        let v6 = 0;
-        while (v6 < 0x1::vector::length<ValidatorInfo>(v5)) {
-            update_stake_pool(v2, 0x1::vector::borrow<ValidatorInfo>(v5, v6).addr, &v1);
-            v6 = v6 + 1;
+        let v6 = &v0.pending_inactive;
+        v4 = 0;
+        while (v4 < 0x1::vector::length<ValidatorInfo>(v6)) {
+            update_stake_pool(v2, 0x1::vector::borrow<ValidatorInfo>(v6, v4).addr, &v1);
+            v4 = v4 + 1;
         };
         append<ValidatorInfo>(&mut v0.active_validators, &mut v0.pending_active);
         v0.pending_inactive = 0x1::vector::empty<ValidatorInfo>();
@@ -1081,11 +1095,11 @@ module 0x1::stake {
             v3 = v3 + 1;
         };
         let v5 = &arg0.pending_inactive;
-        let v6 = 0;
-        while (v6 < 0x1::vector::length<ValidatorInfo>(v5)) {
-            let v7 = 0x1::vector::borrow<ValidatorInfo>(v5, v6);
-            *0x1::vector::borrow_mut<0x1::validator_consensus_info::ValidatorConsensusInfo>(&mut v0, v7.config.validator_index) = 0x1::validator_consensus_info::new(v7.addr, v7.config.consensus_pubkey, v7.voting_power);
-            v6 = v6 + 1;
+        v3 = 0;
+        while (v3 < 0x1::vector::length<ValidatorInfo>(v5)) {
+            let v6 = 0x1::vector::borrow<ValidatorInfo>(v5, v3);
+            *0x1::vector::borrow_mut<0x1::validator_consensus_info::ValidatorConsensusInfo>(&mut v0, v6.config.validator_index) = 0x1::validator_consensus_info::new(v6.addr, v6.config.consensus_pubkey, v6.voting_power);
+            v3 = v3 + 1;
         };
         v0
     }
@@ -1119,5 +1133,5 @@ module 0x1::stake {
         0x1::coin::extract<0x1::aptos_coin::AptosCoin>(&mut v1.inactive, v4)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

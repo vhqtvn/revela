@@ -23,17 +23,17 @@ module 0x1::transaction_validation {
             let v2 = 0x1::coin::is_balance_at_least<0x1::aptos_coin::AptosCoin>(arg1, v1);
             assert!(v2, 0x1::error::out_of_range(1005));
         };
-        let v3 = if (0x1::features::collect_and_distribute_gas_fees()) {
+        if (0x1::features::collect_and_distribute_gas_fees()) {
             0x1::transaction_fee::collect_fee(arg1, v1);
-            0
+            arg4 = 0;
         } else {
-            v1
+            arg4 = v1;
         };
-        if (v3 > arg2) {
-            0x1::transaction_fee::burn_fee(arg1, v3 - arg2);
+        if (arg4 > arg2) {
+            0x1::transaction_fee::burn_fee(arg1, arg4 - arg2);
         } else {
-            if (v3 < arg2) {
-                0x1::transaction_fee::mint_and_refund(arg1, arg2 - v3);
+            if (arg4 < arg2) {
+                0x1::transaction_fee::mint_and_refund(arg1, arg2 - arg4);
             };
         };
         0x1::account::increment_sequence_number(0x1::signer::address_of(&arg0));
@@ -81,7 +81,17 @@ module 0x1::transaction_validation {
         assert!(0x1::timestamp::now_seconds() < arg6, 0x1::error::invalid_argument(1006));
         assert!(0x1::chain_id::get() == arg7, 0x1::error::invalid_argument(1007));
         let v0 = 0x1::signer::address_of(&arg0);
-        if (v0 == arg1 || 0x1::account::exists_at(v0) || !0x1::features::sponsored_automatic_account_creation_enabled() || arg2 > 0) {
+        if (v0 == arg1 || 0x1::account::exists_at(v0)) {
+            v4 = true;
+        } else {
+            v4 = !0x1::features::sponsored_automatic_account_creation_enabled();
+        };
+        if (v4) {
+            v4 = true;
+        } else {
+            v4 = arg2 > 0;
+        };
+        if (v4) {
             assert!(0x1::account::exists_at(v0), 0x1::error::invalid_argument(1004));
             assert!(arg3 == 0x1::account::get_authentication_key(v0), 0x1::error::invalid_argument(1001));
             let v1 = 0x1::account::get_sequence_number(v0);
@@ -92,11 +102,12 @@ module 0x1::transaction_validation {
             assert!(arg2 == 0, 0x1::error::invalid_argument(1003));
             assert!(arg3 == 0x1::bcs::to_bytes<address>(&v0), 0x1::error::invalid_argument(1001));
         };
-        let v2 = arg4 * arg5;
         if (0x1::features::operations_default_to_fa_apt_store_enabled()) {
-            assert!(0x1::aptos_account::is_fungible_balance_at_least(arg1, v2), 0x1::error::invalid_argument(1005));
+            let v2 = 0x1::aptos_account::is_fungible_balance_at_least(arg1, arg4 * arg5);
+            assert!(v2, 0x1::error::invalid_argument(1005));
         } else {
-            assert!(0x1::coin::is_balance_at_least<0x1::aptos_coin::AptosCoin>(arg1, v2), 0x1::error::invalid_argument(1005));
+            let v3 = 0x1::coin::is_balance_at_least<0x1::aptos_coin::AptosCoin>(arg1, arg4 * arg5);
+            assert!(v3, 0x1::error::invalid_argument(1005));
         };
     }
     
@@ -104,5 +115,5 @@ module 0x1::transaction_validation {
         prologue_common(arg0, 0x1::signer::address_of(&arg0), arg1, arg2, arg3, arg4, arg5, arg6);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

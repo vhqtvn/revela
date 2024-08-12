@@ -35,5 +35,5 @@ module 0x1::secp256k1 {
         arg0.bytes
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

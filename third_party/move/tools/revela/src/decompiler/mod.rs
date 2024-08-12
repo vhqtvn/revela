@@ -465,7 +465,25 @@ impl<'a> Decompiler<'a> {
                 }
             }
 
+            let env_decompiler_function_selector =
+                std::env::var("DECOMPILER_FUNCTION_SELECTOR").ok();
+            let env_decompiler_function_selector = env_decompiler_function_selector
+                .as_ref()
+                .map(|s| s.split(",").collect::<Vec<_>>());
+            let env_decompiler_function_selector = env_decompiler_function_selector.as_ref();
+            let env_decompiler_show_stackless_raw =
+                std::env::var("DECOMPILER_SHOW_STACKLESS_RAW").is_ok();
+
+            let env_decompiler_show_stackless_decompiled =
+                std::env::var("DECOMPILER_SHOW_STACKLESS_DECOMPILED").is_ok();
+
             for f in module.get_functions() {
+                if env_decompiler_function_selector
+                    .map(|x| !x.contains(&f.get_name_str().as_str()))
+                    .unwrap_or(false)
+                {
+                    continue;
+                }
                 let mut func_unit = SourceCodeUnit::new(1);
                 let f_sig = self.decompile_function_header(&f, &naming, is_script)?;
                 if f.is_native() {
@@ -475,6 +493,21 @@ impl<'a> Decompiler<'a> {
 
                     let function_target: FunctionTarget<'_> =
                         targets.get_target(&f, &FunctionVariant::Baseline);
+
+                    if env_decompiler_show_stackless_raw {
+                        let bytecode = function_target.get_bytecode();
+                        let mut code_unit = SourceCodeUnit::new(1);
+                        code_unit.add_line(format!("// Raw stackless bytecode"));
+                        let label_offsets = Default::default();
+                        for bytecode in bytecode.iter() {
+                            code_unit.add_line(format!(
+                                "//   {:}",
+                                bytecode.display(&function_target, &label_offsets)
+                            ));
+                        }
+                        code_unit.add_line(format!("// End raw stackless bytecode"));
+                        func_unit.add_block(code_unit);
+                    }
 
                     let mut defined_vars = HashSet::new();
                     for idx in 0..function_target.get_parameter_count() {
@@ -487,6 +520,21 @@ impl<'a> Decompiler<'a> {
                     // much of data from function_target should not be used because
                     // cfg_decompiled changed the bytecodes.
                     // variables offsets are still keeped
+
+                    if env_decompiler_show_stackless_decompiled {
+                        let mut stackless_bytecode_display_ctx =
+                            stackless_bytecode_display::StacklessBycodeDisplayContext::new(
+                                &function_target,
+                            );
+                        cfg_decompiled.display(&mut stackless_bytecode_display_ctx);
+                        let mut code_unit = SourceCodeUnit::new(1);
+                        code_unit.add_line(format!("// Bytecode"));
+                        for line in stackless_bytecode_display_ctx.result().split("\n") {
+                            code_unit.add_line(format!("//   {}", line));
+                        }
+                        code_unit.add_line(format!("// End Bytecode"));
+                        func_unit.add_block(code_unit);
+                    }
 
                     let mut sgen = reconstruct::SourceGen::new(
                         &mut cfg_decompiled,

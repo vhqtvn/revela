@@ -1,4 +1,24 @@
 module 0x1337::token {
+    struct Deposit has drop, store {
+        id: TokenId,
+        amount: u64,
+    }
+    
+    struct DepositEvent has drop, store {
+        id: TokenId,
+        amount: u64,
+    }
+    
+    struct Withdraw has drop, store {
+        id: TokenId,
+        amount: u64,
+    }
+    
+    struct WithdrawEvent has drop, store {
+        id: TokenId,
+        amount: u64,
+    }
+    
     struct BurnToken has drop, store {
         id: TokenId,
         amount: u64,
@@ -76,16 +96,6 @@ module 0x1337::token {
         property_keys: vector<0x1::string::String>,
         property_values: vector<vector<u8>>,
         property_types: vector<0x1::string::String>,
-    }
-    
-    struct Deposit has drop, store {
-        id: TokenId,
-        amount: u64,
-    }
-    
-    struct DepositEvent has drop, store {
-        id: TokenId,
-        amount: u64,
     }
     
     struct MintToken has drop, store {
@@ -166,21 +176,11 @@ module 0x1337::token {
         mutate_token_property_events: 0x1::event::EventHandle<MutateTokenPropertyMapEvent>,
     }
     
-    struct Withdraw has drop, store {
-        id: TokenId,
-        amount: u64,
-    }
-    
     struct WithdrawCapability has drop, store {
         token_owner: address,
         token_id: TokenId,
         amount: u64,
         expiration_sec: u64,
-    }
-    
-    struct WithdrawEvent has drop, store {
-        id: TokenId,
-        amount: u64,
     }
     
     fun assert_collection_exists(arg0: address, arg1: 0x1::string::String) acquires Collections {
@@ -195,9 +195,8 @@ module 0x1337::token {
         while (v0 < 0x1::vector::length<0x1::string::String>(arg0)) {
             let v1 = 0x1::vector::borrow<0x1::string::String>(arg0, v0);
             if (0x1::string::length(v1) >= 6) {
-                let v2 = *v1;
-                let v3 = 0x1::string::sub_string(&v2, 0, 6) != 0x1::string::utf8(b"TOKEN_");
-                assert!(v3, 0x1::error::permission_denied(40));
+                let v2 = 0x1::string::sub_string(v1, 0, 6) != 0x1::string::utf8(b"TOKEN_");
+                assert!(v2, 0x1::error::permission_denied(40));
             };
             v0 = v0 + 1;
         };
@@ -212,15 +211,15 @@ module 0x1337::token {
     }
     
     public fun balance_of(arg0: address, arg1: TokenId) : u64 acquires TokenStore {
-        if (!exists<TokenStore>(arg0)) {
-            return 0
+        if (exists<TokenStore>(arg0)) {
+            let v0 = borrow_global<TokenStore>(arg0);
+            return if (0x1::table::contains<TokenId, Token>(&v0.tokens, arg1)) {
+                0x1::table::borrow<TokenId, Token>(&v0.tokens, arg1).amount
+            } else {
+                0
+            }
         };
-        let v0 = borrow_global<TokenStore>(arg0);
-        if (0x1::table::contains<TokenId, Token>(&v0.tokens, arg1)) {
-            0x1::table::borrow<TokenId, Token>(&v0.tokens, arg1).amount
-        } else {
-            0
-        }
+        0
     }
     
     public entry fun burn(arg0: &signer, arg1: address, arg2: 0x1::string::String, arg3: 0x1::string::String, arg4: u64, arg5: u64) acquires Collections, TokenStore {
@@ -341,7 +340,8 @@ module 0x1337::token {
         assert!(0x1::string::length(&arg1) <= 128, 0x1::error::invalid_argument(25));
         assert!(0x1::string::length(&arg3) <= 512, 0x1::error::invalid_argument(27));
         let v0 = 0x1::signer::address_of(arg0);
-        if (!exists<Collections>(v0)) {
+        if (exists<Collections>(v0)) {
+        } else {
             let v1 = 0x1::table::new<0x1::string::String, CollectionData>();
             let v2 = 0x1::table::new<TokenDataId, TokenData>();
             let v3 = 0x1::account::new_event_handle<CreateCollectionEvent>(arg0);
@@ -357,7 +357,9 @@ module 0x1337::token {
             move_to<Collections>(arg0, v6);
         };
         let v7 = &mut borrow_global_mut<Collections>(v0).collection_data;
-        assert!(!0x1::table::contains<0x1::string::String, CollectionData>(v7, arg1), 0x1::error::already_exists(3));
+        if (0x1::table::contains<0x1::string::String, CollectionData>(v7, arg1)) {
+            abort 0x1::error::already_exists(3)
+        };
         let v8 = create_collection_mutability_config(&arg5);
         let v9 = CollectionData{
             description       : arg2, 
@@ -467,7 +469,9 @@ module 0x1337::token {
         let v1 = borrow_global_mut<Collections>(v0);
         let v2 = create_token_data_id(v0, arg1, arg2);
         assert!(0x1::table::contains<0x1::string::String, CollectionData>(&v1.collection_data, v2.collection), 0x1::error::not_found(2));
-        assert!(!0x1::table::contains<TokenDataId, TokenData>(&v1.token_data, v2), 0x1::error::already_exists(9));
+        if (0x1::table::contains<TokenDataId, TokenData>(&v1.token_data, v2)) {
+            abort 0x1::error::already_exists(9)
+        };
         let v3 = 0x1::table::borrow_mut<0x1::string::String, CollectionData>(&mut v1.collection_data, v2.collection);
         if (v3.maximum > 0) {
             v3.supply = v3.supply + 1;
@@ -578,10 +582,10 @@ module 0x1337::token {
         };
         0x1::event::emit_event<DepositEvent>(&mut v0.deposit_events, v2);
         assert!(exists<TokenStore>(arg0), 0x1::error::not_found(11));
-        if (!0x1::table::contains<TokenId, Token>(&v0.tokens, arg1.id)) {
-            0x1::table::add<TokenId, Token>(&mut v0.tokens, arg1.id, arg1);
-        } else {
+        if (0x1::table::contains<TokenId, Token>(&v0.tokens, arg1.id)) {
             merge(0x1::table::borrow_mut<TokenId, Token>(&mut v0.tokens, arg1.id), arg1);
+        } else {
+            0x1::table::add<TokenId, Token>(&mut v0.tokens, arg1.id, arg1);
         };
     }
     
@@ -649,10 +653,10 @@ module 0x1337::token {
     }
     
     public fun get_direct_transfer(arg0: address) : bool acquires TokenStore {
-        if (!exists<TokenStore>(arg0)) {
-            return false
+        if (exists<TokenStore>(arg0)) {
+            return borrow_global<TokenStore>(arg0).direct_transfer
         };
-        borrow_global<TokenStore>(arg0).direct_transfer
+        false
     }
     
     public fun get_property_map(arg0: address, arg1: TokenId) : 0x1337::property_map::PropertyMap acquires Collections, TokenStore {
@@ -796,7 +800,8 @@ module 0x1337::token {
     }
     
     public fun initialize_token_store(arg0: &signer) {
-        if (!exists<TokenStore>(0x1::signer::address_of(arg0))) {
+        if (exists<TokenStore>(0x1::signer::address_of(arg0))) {
+        } else {
             let v0 = 0x1::table::new<TokenId, Token>();
             let v1 = 0x1::account::new_event_handle<DepositEvent>(arg0);
             let v2 = 0x1::account::new_event_handle<WithdrawEvent>(arg0);
@@ -937,7 +942,8 @@ module 0x1337::token {
         let v1 = &mut borrow_global_mut<Collections>(v0).token_data;
         assert!(0x1::table::contains<TokenDataId, TokenData>(v1, arg2.token_data_id), 0x1::error::not_found(10));
         let v2 = 0x1::table::borrow_mut<TokenDataId, TokenData>(v1, arg2.token_data_id);
-        if (!v2.mutability_config.properties) {
+        if (v2.mutability_config.properties) {
+        } else {
             let v3 = 0x1::string::utf8(b"TOKEN_PROPERTY_MUTATBLE");
             assert!(0x1337::property_map::contains_key(&v2.default_properties, &v3), 0x1::error::permission_denied(13));
             let v4 = 0x1::string::utf8(b"TOKEN_PROPERTY_MUTATBLE");
@@ -1043,31 +1049,30 @@ module 0x1337::token {
         let v1 = &mut borrow_global_mut<Collections>(arg1.creator).token_data;
         let v2 = 0x1::table::borrow_mut<TokenDataId, TokenData>(v1, arg1);
         assert!(v2.mutability_config.properties, 0x1::error::permission_denied(13));
-        let v3 = 0;
-        let v4 = 0x1::vector::empty<0x1::option::Option<0x1337::property_map::PropertyValue>>();
-        let v5 = 0x1::vector::empty<0x1337::property_map::PropertyValue>();
+        let v3 = 0x1::vector::empty<0x1::option::Option<0x1337::property_map::PropertyValue>>();
+        let v4 = 0x1::vector::empty<0x1337::property_map::PropertyValue>();
         assert_non_standard_reserved_property(&arg2);
-        while (v3 < 0x1::vector::length<0x1::string::String>(&arg2)) {
-            let v6 = 0x1::vector::borrow<0x1::string::String>(&arg2, v3);
+        let v5 = 0;
+        while (v5 < 0x1::vector::length<0x1::string::String>(&arg2)) {
+            let v6 = 0x1::vector::borrow<0x1::string::String>(&arg2, v5);
             let v7 = if (0x1337::property_map::contains_key(&v2.default_properties, v6)) {
                 0x1::option::some<0x1337::property_map::PropertyValue>(*0x1337::property_map::borrow(&v2.default_properties, v6))
             } else {
                 0x1::option::none<0x1337::property_map::PropertyValue>()
             };
-            let v8 = v7;
-            0x1::vector::push_back<0x1::option::Option<0x1337::property_map::PropertyValue>>(&mut v4, v8);
-            let v9 = *0x1::vector::borrow<0x1::string::String>(&arg4, v3);
-            let v10 = 0x1337::property_map::create_property_value_raw(*0x1::vector::borrow<vector<u8>>(&arg3, v3), v9);
-            0x1::vector::push_back<0x1337::property_map::PropertyValue>(&mut v5, v10);
-            if (0x1::option::is_some<0x1337::property_map::PropertyValue>(&v8)) {
-                0x1337::property_map::update_property_value(&mut v2.default_properties, v6, v10);
+            0x1::vector::push_back<0x1::option::Option<0x1337::property_map::PropertyValue>>(&mut v3, v7);
+            let v8 = *0x1::vector::borrow<0x1::string::String>(&arg4, v5);
+            let v9 = 0x1337::property_map::create_property_value_raw(*0x1::vector::borrow<vector<u8>>(&arg3, v5), v8);
+            0x1::vector::push_back<0x1337::property_map::PropertyValue>(&mut v4, v9);
+            if (0x1::option::is_some<0x1337::property_map::PropertyValue>(&v7)) {
+                0x1337::property_map::update_property_value(&mut v2.default_properties, v6, v9);
             } else {
-                0x1337::property_map::add(&mut v2.default_properties, *v6, v10);
+                0x1337::property_map::add(&mut v2.default_properties, *v6, v9);
             };
-            v3 = v3 + 1;
+            v5 = v5 + 1;
         };
-        let v11 = arg1.collection;
-        0x1337::token_event_store::emit_default_property_mutate_event(arg0, v11, arg1.name, arg2, v4, v5);
+        let v10 = arg1.collection;
+        0x1337::token_event_store::emit_default_property_mutate_event(arg0, v10, arg1.name, arg2, v3, v4);
     }
     
     public fun mutate_tokendata_royalty(arg0: &signer, arg1: TokenDataId, arg2: Royalty) acquires Collections {
@@ -1196,5 +1201,5 @@ module 0x1337::token {
         }
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

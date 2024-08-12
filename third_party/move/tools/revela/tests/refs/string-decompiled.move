@@ -42,8 +42,17 @@ module 0x1::string {
     native fun internal_sub_string(arg0: &vector<u8>, arg1: u64, arg2: u64) : vector<u8>;
     public fun sub_string(arg0: &String, arg1: u64, arg2: u64) : String {
         let v0 = &arg0.bytes;
-        let v1 = arg2 <= 0x1::vector::length<u8>(v0);
-        assert!(v1 && arg1 <= arg2 && internal_is_char_boundary(v0, arg1) && internal_is_char_boundary(v0, arg2), 2);
+        if (arg2 <= 0x1::vector::length<u8>(v0) && arg1 <= arg2) {
+            v1 = internal_is_char_boundary(v0, arg1);
+        } else {
+            v1 = false;
+        };
+        if (v1) {
+            v1 = internal_is_char_boundary(v0, arg2);
+        } else {
+            v1 = false;
+        };
+        assert!(v1, 2);
         String{bytes: internal_sub_string(v0, arg1, arg2)}
     }
     
@@ -61,5 +70,5 @@ module 0x1::string {
         String{bytes: arg0}
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

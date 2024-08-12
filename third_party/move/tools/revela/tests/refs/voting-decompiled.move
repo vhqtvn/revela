@@ -187,12 +187,11 @@ module 0x1::voting {
             let v1 = 0x1::table::borrow<u64, Proposal<T0>>(&borrow_global<VotingForum<T0>>(arg0).proposals, arg1);
             let v2 = v1.yes_votes;
             let v3 = v1.no_votes;
-            let v4 = if (v2 > v3 && v2 + v3 >= v1.min_vote_threshold) {
+            if (v2 > v3 && v2 + v3 >= v1.min_vote_threshold) {
                 1
             } else {
                 3
-            };
-            v4
+            }
         } else {
             0
         }
@@ -226,7 +225,9 @@ module 0x1::voting {
         assert!(v0 == 1, 0x1::error::invalid_state(2));
         let v1 = &mut borrow_global_mut<VotingForum<T0>>(arg0).proposals;
         let v2 = 0x1::table::borrow_mut<u64, Proposal<T0>>(v1, arg1);
-        assert!(!v2.is_resolved, 0x1::error::invalid_state(3));
+        if (v2.is_resolved) {
+            abort 0x1::error::invalid_state(3)
+        };
         let v3 = 0x1::string::utf8(b"RESOLVABLE_TIME_METADATA_KEY");
         let v4 = 0x1::from_bcs::to_u64(*0x1::simple_map::borrow<0x1::string::String, vector<u8>>(&v2.metadata, &v3));
         assert!(0x1::timestamp::now_seconds() > v4, 0x1::error::invalid_state(8));
@@ -254,7 +255,9 @@ module 0x1::voting {
     
     public fun register<T0: store>(arg0: &signer) {
         let v0 = 0x1::signer::address_of(arg0);
-        assert!(!exists<VotingForum<T0>>(v0), 0x1::error::already_exists(6));
+        if (exists<VotingForum<T0>>(v0)) {
+            abort 0x1::error::already_exists(6)
+        };
         let v1 = 0x1::account::new_event_handle<CreateProposalEvent>(arg0);
         let v2 = 0x1::account::new_event_handle<RegisterForumEvent>(arg0);
         let v3 = 0x1::account::new_event_handle<ResolveProposal>(arg0);
@@ -291,29 +294,31 @@ module 0x1::voting {
         let v1 = 0x1::table::borrow_mut<u64, Proposal<T0>>(&mut v0.proposals, arg1);
         let v2 = 0x1::string::utf8(b"IS_MULTI_STEP_PROPOSAL_KEY");
         if (0x1::simple_map::contains_key<0x1::string::String, vector<u8>>(&v1.metadata, &v2)) {
-            let v3 = !0x1::from_bcs::to_bool(*0x1::simple_map::borrow<0x1::string::String, vector<u8>>(&v1.metadata, &v2));
-            assert!(v3, 0x1::error::permission_denied(10));
+            if (0x1::from_bcs::to_bool(*0x1::simple_map::borrow<0x1::string::String, vector<u8>>(&v1.metadata, &v2))) {
+                abort 0x1::error::permission_denied(10)
+            };
         };
-        let v4 = can_be_resolved_early<T0>(v1);
+        let v3 = can_be_resolved_early<T0>(v1);
         v1.is_resolved = true;
         v1.resolution_time_secs = 0x1::timestamp::now_seconds();
         if (0x1::features::module_event_migration_enabled()) {
-            let v5 = ResolveProposal{
+            let v4 = ResolveProposal{
                 proposal_id    : arg1, 
                 yes_votes      : v1.yes_votes, 
                 no_votes       : v1.no_votes, 
-                resolved_early : v4,
+                resolved_early : v3,
             };
-            0x1::event::emit<ResolveProposal>(v5);
+            0x1::event::emit<ResolveProposal>(v4);
         };
-        let v6 = ResolveProposal{
+        let v5 = ResolveProposal{
             proposal_id    : arg1, 
             yes_votes      : v1.yes_votes, 
             no_votes       : v1.no_votes, 
-            resolved_early : v4,
+            resolved_early : v3,
         };
-        0x1::event::emit_event<ResolveProposal>(&mut v0.events.resolve_proposal_events, v6);
-        0x1::option::extract<T0>(&mut v1.execution_content)
+        0x1::event::emit_event<ResolveProposal>(&mut v0.events.resolve_proposal_events, v5);
+        return 0x1::option::extract<T0>(&mut v1.execution_content)
+        abort 0x1::error::permission_denied(10)
     }
     
     public fun resolve_proposal_v2<T0: store>(arg0: address, arg1: u64, arg2: vector<u8>) acquires VotingForum {
@@ -362,15 +367,19 @@ module 0x1::voting {
     public fun vote<T0: store>(arg0: &T0, arg1: address, arg2: u64, arg3: u64, arg4: bool) acquires VotingForum {
         let v0 = borrow_global_mut<VotingForum<T0>>(arg1);
         let v1 = 0x1::table::borrow_mut<u64, Proposal<T0>>(&mut v0.proposals, arg2);
-        assert!(!is_voting_period_over<T0>(v1), 0x1::error::invalid_state(5));
-        assert!(!v1.is_resolved, 0x1::error::invalid_state(3));
+        if (is_voting_period_over<T0>(v1)) {
+            abort 0x1::error::invalid_state(5)
+        };
+        if (v1.is_resolved) {
+            abort 0x1::error::invalid_state(3)
+        };
         let v2 = 0x1::string::utf8(b"IS_MULTI_STEP_PROPOSAL_IN_EXECUTION");
-        let v3 = if (!0x1::simple_map::contains_key<0x1::string::String, vector<u8>>(&v1.metadata, &v2)) {
-            true
-        } else {
+        let v3 = if (0x1::simple_map::contains_key<0x1::string::String, vector<u8>>(&v1.metadata, &v2)) {
             let v4 = 0x1::string::utf8(b"IS_MULTI_STEP_PROPOSAL_IN_EXECUTION");
             let v5 = false;
             *0x1::simple_map::borrow<0x1::string::String, vector<u8>>(&v1.metadata, &v4) == 0x1::bcs::to_bytes<bool>(&v5)
+        } else {
+            true
         };
         assert!(v3, 0x1::error::invalid_state(9));
         if (arg4) {
@@ -400,5 +409,5 @@ module 0x1::voting {
         0x1::event::emit_event<VoteEvent>(&mut v0.events.vote_events, v10);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

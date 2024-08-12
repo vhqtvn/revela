@@ -20,11 +20,14 @@ mod test {
 
         println!("manifest_dir: {}", manifest_dir);
 
-        let (src_scripts, src_modules) = utils::run_compiler(
-            vec![PathBuf::from(manifest_dir).join(path).to_str().unwrap()],
-            Flags::empty(),
-            false,
-        );
+        let src_path_buf = PathBuf::from(manifest_dir).join(path);
+        let src_path = src_path_buf.to_str().unwrap();
+        let source = std::fs::read_to_string(src_path).expect("Unable to read file");
+        let mut src_scripts: Vec<move_binary_format::file_format::CompiledScript> = Vec::new();
+        let mut src_modules: Vec<move_binary_format::file_format::CompiledModule> = Vec::new();
+        utils::tmp_project(vec![(path, source.as_str())], |project_path, tmp_files| {
+            (src_scripts, src_modules) = utils::run_compiler(project_path, tmp_files, false);
+        });
 
         let binaries = utils::into_binary_indexed_view(&src_scripts, &src_modules);
 
@@ -34,8 +37,8 @@ mod test {
 
         println!("{}", output);
 
-        utils::tmp_project(vec![(path, output.as_str())], |tmp_files| {
-            let (scripts, modules) = utils::run_compiler(tmp_files, Flags::empty(), false);
+        utils::tmp_project(vec![(path, output.as_str())], |project_path, tmp_files| {
+            let (scripts, modules) = utils::run_compiler(project_path, tmp_files, false);
 
             modules_should_match(&src_modules, &modules);
 

@@ -28,5 +28,5 @@ module 0x12::test {
         v4 + 1
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

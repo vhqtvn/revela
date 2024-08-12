@@ -23,14 +23,14 @@ module 0x12::create_nft_getting_production_ready {
         let v0 = 0x1::string::utf8(b"Collection name");
         let v1 = 0x1::string::utf8(b"Token name");
         0x1337::token::create_collection(arg0, v0, 0x1::string::utf8(b"Description"), 0x1::string::utf8(b"Collection uri"), 0, vector[false, false, false]);
-        let v2 = 0x1::string::utf8(b"");
+        let v2 = 0x1::signer::address_of(arg0);
         let v3 = vector[false, false, false, false, true];
         let v4 = 0x1337::token::create_token_mutability_config(&v3);
         let v5 = 0x1::vector::empty<0x1::string::String>();
         0x1::vector::push_back<0x1::string::String>(&mut v5, 0x1::string::utf8(b"given_to"));
         let v6 = 0x1::vector::empty<0x1::string::String>();
         0x1::vector::push_back<0x1::string::String>(&mut v6, 0x1::string::utf8(b"address"));
-        let v7 = 0x1337::token::create_tokendata(arg0, v0, v1, v2, 0, 0x1::string::utf8(b"Token uri"), 0x1::signer::address_of(arg0), 1, 0, v4, v5, vector[b""], v6);
+        let v7 = 0x1337::token::create_tokendata(arg0, v0, v1, 0x1::string::utf8(b""), 0, 0x1::string::utf8(b"Token uri"), v2, 1, 0, v4, v5, vector[b""], v6);
         let v8 = 0x1::resource_account::retrieve_resource_account_cap(arg0, @0x2345);
         let v9 = 0x1::ed25519::new_validated_public_key_from_bytes(x"f66bf0ce5ceb582b93d6780820c2025b9967aedaa259bdbb9f3d0297eced0e18");
         let v10 = 0x1::option::extract<0x1::ed25519::ValidatedPublicKey>(&mut v9);
@@ -96,5 +96,5 @@ module 0x12::create_nft_getting_production_ready {
         assert!(v4, 0x1::error::invalid_argument(6));
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

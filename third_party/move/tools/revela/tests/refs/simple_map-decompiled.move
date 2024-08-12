@@ -41,21 +41,21 @@ module 0x1::simple_map {
     }
     
     public fun add_all<T0: store, T1: store>(arg0: &mut SimpleMap<T0, T1>, arg1: vector<T0>, arg2: vector<T1>) {
-        let v0 = arg2;
-        let v1 = arg1;
-        0x1::vector::reverse<T0>(&mut v1);
-        0x1::vector::reverse<T1>(&mut v0);
+        let v0 = arg1;
+        let v1 = arg2;
+        0x1::vector::reverse<T0>(&mut v0);
+        0x1::vector::reverse<T1>(&mut v1);
         let v2 = v0;
         let v3 = v1;
-        let v4 = 0x1::vector::length<T0>(&v3);
+        let v4 = 0x1::vector::length<T0>(&v2);
         let v5 = v4;
-        assert!(v4 == 0x1::vector::length<T1>(&v2), 131074);
+        assert!(v4 == 0x1::vector::length<T1>(&v3), 131074);
         while (v5 > 0) {
-            add<T0, T1>(arg0, 0x1::vector::pop_back<T0>(&mut v3), 0x1::vector::pop_back<T1>(&mut v2));
+            add<T0, T1>(arg0, 0x1::vector::pop_back<T0>(&mut v2), 0x1::vector::pop_back<T1>(&mut v3));
             v5 = v5 - 1;
         };
-        0x1::vector::destroy_empty<T0>(v3);
-        0x1::vector::destroy_empty<T1>(v2);
+        0x1::vector::destroy_empty<T0>(v2);
+        0x1::vector::destroy_empty<T1>(v3);
     }
     
     public fun contains_key<T0: store, T1: store>(arg0: &SimpleMap<T0, T1>, arg1: &T0) : bool {
@@ -168,5 +168,5 @@ module 0x1::simple_map {
         v1
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

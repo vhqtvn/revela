@@ -83,5 +83,5 @@ module 0x12::create_nft_getting_production_ready {
         assert!(0x1::ed25519::signature_verify_strict_t<MintProofChallenge>(&v1, &v2, v0), 0x1::error::invalid_argument(6));
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

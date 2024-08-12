@@ -366,7 +366,8 @@ module 0x1337::token_event_store {
     }
     
     fun initialize_token_event_store(arg0: &signer) {
-        if (!exists<TokenEventStoreV1>(0x1::signer::address_of(arg0))) {
+        if (exists<TokenEventStoreV1>(0x1::signer::address_of(arg0))) {
+        } else {
             let v0 = 0x1::account::new_event_handle<CollectionUriMutateEvent>(arg0);
             let v1 = 0x1::account::new_event_handle<CollectionMaxiumMutateEvent>(arg0);
             let v2 = 0x1::account::new_event_handle<CollectionDescriptionMutateEvent>(arg0);
@@ -393,5 +394,5 @@ module 0x1337::token_event_store {
         };
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

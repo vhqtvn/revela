@@ -74,10 +74,10 @@ module 0x1::code {
                 0x1::vector::push_back<AllowedDep>(&mut v0, v4);
             } else {
                 let v5 = &borrow_global<PackageRegistry>(v3.account).packages;
-                let v6 = false;
-                let v7 = 0;
-                while (v7 < 0x1::vector::length<PackageMetadata>(v5)) {
-                    let v8 = 0x1::vector::borrow<PackageMetadata>(v5, v7);
+                let v6 = 0;
+                let v7 = false;
+                while (v6 < 0x1::vector::length<PackageMetadata>(v5)) {
+                    let v8 = 0x1::vector::borrow<PackageMetadata>(v5, v6);
                     let v9 = if (v8.name == v3.package_name) {
                         assert!(v8.upgrade_policy.policy >= arg1.upgrade_policy.policy, 0x1::error::invalid_argument(6));
                         if (v8.upgrade_policy == upgrade_policy_arbitrary()) {
@@ -97,13 +97,13 @@ module 0x1::code {
                     } else {
                         false
                     };
-                    v6 = v9;
+                    v7 = v9;
                     if (v9) {
                         break
                     };
-                    v7 = v7 + 1;
+                    v6 = v6 + 1;
                 };
-                assert!(v6, 0x1::error::not_found(5));
+                assert!(v7, 0x1::error::not_found(5));
             };
             v2 = v2 + 1;
         };
@@ -134,19 +134,20 @@ module 0x1::code {
         let v3 = &mut v2.packages;
         let v4 = 0;
         while (v4 < 0x1::vector::length<PackageMetadata>(v3)) {
-            0x1::vector::borrow_mut<PackageMetadata>(v3, v4).upgrade_policy = upgrade_policy_immutable();
+            let v5 = 0x1::vector::borrow_mut<PackageMetadata>(v3, v4);
+            v5.upgrade_policy = upgrade_policy_immutable();
             v4 = v4 + 1;
         };
-        let v5 = v2.packages;
-        0x1::vector::reverse<PackageMetadata>(&mut v5);
-        let v6 = v5;
-        let v7 = 0x1::vector::length<PackageMetadata>(&v6);
-        while (v7 > 0) {
-            let v8 = 0x1::vector::pop_back<PackageMetadata>(&mut v6);
+        let v6 = v2.packages;
+        0x1::vector::reverse<PackageMetadata>(&mut v6);
+        let v7 = v6;
+        v4 = 0x1::vector::length<PackageMetadata>(&v7);
+        while (v4 > 0) {
+            let v8 = 0x1::vector::pop_back<PackageMetadata>(&mut v7);
             check_dependencies(v0, &v8);
-            v7 = v7 - 1;
+            v4 = v4 - 1;
         };
-        0x1::vector::destroy_empty<PackageMetadata>(v6);
+        0x1::vector::destroy_empty<PackageMetadata>(v7);
     }
     
     fun get_module_names(arg0: &PackageMetadata) : vector<0x1::string::String> {
@@ -164,25 +165,66 @@ module 0x1::code {
     fun initialize(arg0: &signer, arg1: &signer, arg2: PackageMetadata) acquires PackageRegistry {
         0x1::system_addresses::assert_aptos_framework(arg0);
         let v0 = 0x1::signer::address_of(arg1);
-        if (!exists<PackageRegistry>(v0)) {
+        if (exists<PackageRegistry>(v0)) {
+            0x1::vector::push_back<PackageMetadata>(&mut borrow_global_mut<PackageRegistry>(v0).packages, arg2);
+        } else {
             let v1 = 0x1::vector::empty<PackageMetadata>();
             0x1::vector::push_back<PackageMetadata>(&mut v1, arg2);
             let v2 = PackageRegistry{packages: v1};
             move_to<PackageRegistry>(arg1, v2);
-        } else {
-            0x1::vector::push_back<PackageMetadata>(&mut borrow_global_mut<PackageRegistry>(v0).packages, arg2);
         };
     }
     
     fun is_policy_exempted_address(arg0: address) : bool {
-        arg0 == @0x1 || arg0 == @0x2 || arg0 == @0x3 || arg0 == @0x4 || arg0 == @0x5 || arg0 == @0x6 || arg0 == @0x7 || arg0 == @0x8 || arg0 == @0x9 || arg0 == @0xa
+        if (arg0 == @0x1 || arg0 == @0x2) {
+            v0 = true;
+        } else {
+            v0 = arg0 == @0x3;
+        };
+        if (v0) {
+            v0 = true;
+        } else {
+            v0 = arg0 == @0x4;
+        };
+        if (v0) {
+            v0 = true;
+        } else {
+            v0 = arg0 == @0x5;
+        };
+        if (v0) {
+            v0 = true;
+        } else {
+            v0 = arg0 == @0x6;
+        };
+        if (v0) {
+            v0 = true;
+        } else {
+            v0 = arg0 == @0x7;
+        };
+        if (v0) {
+            v0 = true;
+        } else {
+            v0 = arg0 == @0x8;
+        };
+        if (v0) {
+            v0 = true;
+        } else {
+            v0 = arg0 == @0x9;
+        };
+        if (v0) {
+            v0 = true;
+        } else {
+            v0 = arg0 == @0xa;
+        };
+        v0
     }
     
     public fun publish_package(arg0: &signer, arg1: PackageMetadata, arg2: vector<vector<u8>>) acquires PackageRegistry {
         let v0 = upgrade_policy_arbitrary();
         assert!(arg1.upgrade_policy.policy > v0.policy, 0x1::error::invalid_argument(8));
         let v1 = 0x1::signer::address_of(arg0);
-        if (!exists<PackageRegistry>(v1)) {
+        if (exists<PackageRegistry>(v1)) {
+        } else {
             let v2 = PackageRegistry{packages: 0x1::vector::empty<PackageMetadata>()};
             move_to<PackageRegistry>(arg0, v2);
         };
@@ -193,18 +235,18 @@ module 0x1::code {
         let v7 = v6;
         let v8 = 0;
         let v9 = 0;
-        while (v9 < 0x1::vector::length<PackageMetadata>(v5)) {
-            let v10 = 0x1::vector::borrow<PackageMetadata>(v5, v9);
+        while (v8 < 0x1::vector::length<PackageMetadata>(v5)) {
+            let v10 = 0x1::vector::borrow<PackageMetadata>(v5, v8);
             if (v10.name == arg1.name) {
-                v8 = v10.upgrade_number + 1;
+                v9 = v10.upgrade_number + 1;
                 check_upgradability(v10, &arg1, &v4);
-                v7 = v9;
+                v7 = v8;
             } else {
                 check_coexistence(v10, &v4);
             };
-            v9 = v9 + 1;
+            v8 = v8 + 1;
         };
-        arg1.upgrade_number = v8;
+        arg1.upgrade_number = v9;
         let v11 = arg1.upgrade_policy;
         if (v7 < v6) {
             let v12 = 0x1::vector::borrow_mut<PackageMetadata>(&mut borrow_global_mut<PackageRegistry>(v1).packages, v7);
@@ -214,7 +256,7 @@ module 0x1::code {
         };
         let v13 = PublishPackage{
             code_address : v1, 
-            is_upgrade   : v8 > 0,
+            is_upgrade   : v9 > 0,
         };
         0x1::event::emit<PublishPackage>(v13);
         if (0x1::features::code_dependency_check_enabled()) {
@@ -242,5 +284,5 @@ module 0x1::code {
         UpgradePolicy{policy: 2}
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

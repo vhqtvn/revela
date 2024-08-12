@@ -48,7 +48,10 @@ module 0x1::genesis {
         0x1::transaction_validation::initialize(v3, b"script_prologue", b"module_prologue", b"multi_agent_script_prologue", b"epilogue");
         0x1::aptos_governance::store_signer_cap(&v2, @0x1, v1);
         let v4 = vector[@0x2, @0x3, @0x4, @0x5, @0x6, @0x7, @0x8, @0x9, @0xa];
-        while (!0x1::vector::is_empty<address>(&v4)) {
+        loop {
+            if (0x1::vector::is_empty<address>(&v4)) {
+                break
+            };
             let v5 = 0x1::vector::pop_back<address>(&mut v4);
             let (_, v7) = 0x1::account::create_framework_reserved_account(v5);
             0x1::aptos_governance::store_signer_cap(&v2, v5, v7);
@@ -79,7 +82,9 @@ module 0x1::genesis {
         let v2 = 0;
         while (v2 < 0x1::vector::length<AccountMap>(v1)) {
             let v3 = 0x1::vector::borrow<AccountMap>(v1, v2);
-            assert!(!0x1::vector::contains<address>(&v0, &v3.account_address), 0x1::error::already_exists(1));
+            if (0x1::vector::contains<address>(&v0, &v3.account_address)) {
+                abort 0x1::error::already_exists(1)
+            };
             0x1::vector::push_back<address>(&mut v0, v3.account_address);
             create_account(arg0, v3.account_address, v3.balance);
             v2 = v2 + 1;
@@ -92,44 +97,38 @@ module 0x1::genesis {
         let v2 = 0;
         while (v2 < 0x1::vector::length<EmployeeAccountMap>(v1)) {
             let v3 = 0x1::vector::borrow<EmployeeAccountMap>(v1, v2);
-            let v4 = 0;
-            let v5 = 0x1::simple_map::create<address, 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>>();
-            while (v4 < 0x1::vector::length<address>(&v3.accounts)) {
-                let v6 = 0x1::vector::borrow<address>(&v3.accounts, v4);
-                assert!(!0x1::vector::contains<address>(&v0, v6), 0x1::error::already_exists(1));
+            let v4 = 0x1::simple_map::create<address, 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>>();
+            let v5 = 0;
+            while (v5 < 0x1::vector::length<address>(&v3.accounts)) {
+                let v6 = 0x1::vector::borrow<address>(&v3.accounts, v5);
+                if (0x1::vector::contains<address>(&v0, v6)) {
+                    abort 0x1::error::already_exists(1)
+                };
                 0x1::vector::push_back<address>(&mut v0, *v6);
                 let v7 = 0x1::create_signer::create_signer(*v6);
-                let v8 = 0x1::coin::balance<0x1::aptos_coin::AptosCoin>(*v6);
-                let v9 = 0x1::coin::withdraw<0x1::aptos_coin::AptosCoin>(&v7, v8);
-                0x1::simple_map::add<address, 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>>(&mut v5, *v6, v9);
-                v4 = v4 + 1;
+                0x1::simple_map::add<address, 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>>(&mut v4, *v6, 0x1::coin::withdraw<0x1::aptos_coin::AptosCoin>(&v7, 0x1::coin::balance<0x1::aptos_coin::AptosCoin>(*v6)));
+                v5 = v5 + 1;
             };
-            let v10 = 0;
-            let v11 = 0x1::vector::empty<0x1::fixed_point32::FixedPoint32>();
-            while (v10 < 0x1::vector::length<u64>(&v3.vesting_schedule_numerator)) {
-                let v12 = &v3.vesting_schedule_numerator;
-                let v13 = v3.vesting_schedule_denominator;
-                let v14 = 0x1::fixed_point32::create_from_rational(*0x1::vector::borrow<u64>(v12, v10), v13);
-                0x1::vector::push_back<0x1::fixed_point32::FixedPoint32>(&mut v11, v14);
-                v10 = v10 + 1;
+            let v8 = 0x1::vector::empty<0x1::fixed_point32::FixedPoint32>();
+            v5 = 0;
+            while (v5 < 0x1::vector::length<u64>(&v3.vesting_schedule_numerator)) {
+                0x1::vector::push_back<0x1::fixed_point32::FixedPoint32>(&mut v8, 0x1::fixed_point32::create_from_rational(*0x1::vector::borrow<u64>(&v3.vesting_schedule_numerator, v5), v3.vesting_schedule_denominator));
+                v5 = v5 + 1;
             };
-            let v15 = 0x1::vesting::create_vesting_schedule(v11, arg0, arg1);
-            let v16 = v3.validator.validator_config.owner_address;
-            let v17 = 0x1::create_signer::create_signer(v16);
-            let v18 = &v17;
-            let v19 = v3.validator.validator_config.operator_address;
-            let v20 = v3.validator.validator_config.voter_address;
-            let v21 = v3.validator.commission_percentage;
-            let v22 = 0x1::vesting::create_vesting_contract(v18, &v3.accounts, v5, v15, v16, v19, v20, v21, b"");
+            let v9 = 0x1::vesting::create_vesting_schedule(v8, arg0, arg1);
+            let v10 = v3.validator.validator_config.owner_address;
+            let v11 = 0x1::create_signer::create_signer(v10);
+            let v12 = &v11;
+            let v13 = 0x1::vesting::create_vesting_contract(v12, &v3.accounts, v4, v9, v10, v3.validator.validator_config.operator_address, v3.validator.validator_config.voter_address, v3.validator.commission_percentage, b"");
             if (v3.beneficiary_resetter != @0x0) {
-                0x1::vesting::set_beneficiary_resetter(v18, v22, v3.beneficiary_resetter);
+                0x1::vesting::set_beneficiary_resetter(v12, v13, v3.beneficiary_resetter);
             };
-            let v23 = &v3.validator.validator_config;
-            assert!(0x1::account::exists_at(v23.owner_address), 0x1::error::not_found(2));
-            assert!(0x1::account::exists_at(v23.operator_address), 0x1::error::not_found(2));
-            assert!(0x1::account::exists_at(v23.voter_address), 0x1::error::not_found(2));
+            let v14 = &v3.validator.validator_config;
+            assert!(0x1::account::exists_at(v14.owner_address), 0x1::error::not_found(2));
+            assert!(0x1::account::exists_at(v14.operator_address), 0x1::error::not_found(2));
+            assert!(0x1::account::exists_at(v14.voter_address), 0x1::error::not_found(2));
             if (v3.validator.join_during_genesis) {
-                initialize_validator(0x1::vesting::stake_pool_address(v22), v23);
+                initialize_validator(0x1::vesting::stake_pool_address(v13), v14);
             };
             v2 = v2 + 1;
         };
@@ -216,5 +215,5 @@ module 0x1::genesis {
         0x1::stake::join_validator_set_internal(v1, arg0);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

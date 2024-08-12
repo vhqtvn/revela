@@ -25,5 +25,5 @@ module 0x1::chain_status {
         move_to<GenesisEndMarker>(arg0, v0);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

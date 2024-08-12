@@ -10,7 +10,7 @@ use move_stackless_bytecode::{
     stackless_bytecode::{Bytecode, Operation},
     stackless_control_flow_graph::StacklessControlFlowGraph,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub struct PeepHoleProcessor {
     max_loop: usize,
@@ -123,69 +123,115 @@ impl PeepHoleProcessor {
         }
     }
 
-    // remove all Destroy insn that destroys the destination of the instruction right above it
+    fn remove_destroy_in_assignments_block(
+        changed: &mut bool,
+        mut block: Vec<Bytecode>,
+    ) -> Vec<Bytecode> {
+        fn next_remove(block: &Vec<Bytecode>) -> Option<(usize, usize)> {
+            let mut instruction_to_remove = HashMap::new();
+            for (idx, inst) in block.iter().enumerate() {
+                match inst {
+                    Bytecode::Assign(_, dest, src, _) => {
+                        instruction_to_remove.insert(dest, idx);
+                        // src is used, so we cannot remove assignment to it
+                        instruction_to_remove.remove(&src);
+                    }
+                    Bytecode::Load(_, dest, _) => {
+                        instruction_to_remove.insert(dest, idx);
+                    }
+                    Bytecode::Call(_, dest, op, srcs, _) => {
+                        if let Operation::Drop = op {
+                            //
+                            assert!(srcs.len() == 1 && dest.len() == 0);
+                            if let Some(prev_idx) = instruction_to_remove.get(&srcs[0]) {
+                                let prev_inst = &block[*prev_idx];
+                                let can_safe_remove = match prev_inst {
+                                    Bytecode::Assign(_, _, _, _) => true,
+                                    Bytecode::Load(_, _, _) => true,
+                                    Bytecode::Call(_, dst, op, _, _) => {
+                                        if PeepHoleProcessor::no_side_effect(op) {
+                                            true
+                                        } else if dst.len() <= 1 {
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                                    _ => false,
+                                };
+                                if can_safe_remove {
+                                    return Some((*prev_idx, idx));
+                                }
+                                instruction_to_remove.remove(&srcs[0]);
+                            }
+                        } else {
+                            for d in dest {
+                                instruction_to_remove.insert(d, idx);
+                            }
+                            for src in srcs {
+                                instruction_to_remove.remove(src);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            None
+        }
+        while let Some((prev, destroy)) = next_remove(&block) {
+            assert!(prev < destroy);
+            block.remove(destroy);
+            if match &mut block[prev] {
+                Bytecode::Call(_, dst, op, _, _) => {
+                    if PeepHoleProcessor::no_side_effect(op) {
+                        true
+                    } else {
+                        dst.clear();
+                        false
+                    }
+                }
+                Bytecode::Assign(_, _, _, _) | Bytecode::Load(_, _, _) => true,
+                _ => unreachable!(),
+            } {
+                block.remove(prev);
+            }
+            *changed = true;
+        }
+        block
+    }
+
+    // remove all Destroy insn that destroys the destination of some instruction above it that is not used in between
     fn remove_destroy(code: Vec<Bytecode>) -> (Vec<Bytecode>, bool) {
         let mut changed = false;
         let cfg = StacklessControlFlowGraph::new_forward(&code);
 
-        // save offsets of all basic blocks
-        let block_offsets: Vec<_> = cfg
-            .blocks()
-            .iter()
-            .filter_map(|&num| cfg.instr_indexes(num).and_then(|mut iter| iter.next()))
-            .collect();
-
-        // println!("block offsets = {:?}", block_offsets);
-
         // Transform code.
         let mut new_code = vec![];
 
-        for (code_offset, insn) in code.iter().enumerate() {
-            // println!(">>> {code_offset}: {:?}", insn);
-            if let Bytecode::Call(_, _, oper, srcs, _) = insn {
-                let offset: u16 = code_offset as u16;
+        let mut current_assignment_block = vec![];
 
-                if !block_offsets.contains(&offset) && matches!(oper, Operation::Drop) {
-                    // This is NOT the first instruction in a basic block.
-                    if let Some(last_insn) = new_code.last_mut() {
-                        match last_insn {
-                            // pattern: Load(AttrId(8), 8, U64(1));  Call(AttrId(9), [], Drop, [8], None)
-                            Bytecode::Load(_, dest, _) | Bytecode::Assign(_, dest, _, _)
-                                if srcs.contains(dest) =>
-                            {
-                                // We need to remove the previous insn as well
-                                new_code.pop();
-
-                                changed = true;
-
-                                // Continue, so we do not take this insn - effectively removing it
-                                continue;
-                            }
-
-                            // Call(AttrId(6), [7], Add, [5, 6], None); Call(AttrId(7), [], Drop, [7], None)
-                            Bytecode::Call(_, dest, last_inst_oper, _, _)
-                                if dest.len() > 0 && dest == srcs =>
-                            {
-                                if Self::no_side_effect(&last_inst_oper) {
-                                    new_code.pop();
-                                } else {
-                                    dest.clear();
-                                }
-
-                                changed = true;
-
-                                // Continue, so we do not take this insn - effectively removing it
-                                continue;
-                            }
-
-                            _ => {}
-                        }
-                    }
+        for (_, insn) in code.iter().enumerate() {
+            if let Bytecode::Call(..) | Bytecode::Assign(..) | Bytecode::Load(..) = insn {
+                current_assignment_block.push(insn.clone());
+                continue;
+            } else {
+                for insn in Self::remove_destroy_in_assignments_block(
+                    &mut changed,
+                    current_assignment_block.clone(),
+                ) {
+                    new_code.push(insn);
                 }
+                current_assignment_block.clear();
             }
 
             // This instruction should be included
             new_code.push(insn.clone());
+        }
+        for insn in Self::remove_destroy_in_assignments_block(
+            &mut changed,
+            current_assignment_block.clone(),
+        ) {
+            new_code.push(insn);
         }
 
         (new_code, changed)

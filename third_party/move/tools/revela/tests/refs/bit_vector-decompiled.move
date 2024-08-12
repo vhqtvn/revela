@@ -54,21 +54,21 @@ module 0x1::bit_vector {
                 v1 = v1 + 1;
             };
         } else {
-            let v2 = arg1;
-            while (v2 < arg0.length) {
-                if (is_index_set(arg0, v2)) {
-                    let v3 = v2 - arg1;
-                    set(arg0, v3);
+            let v1 = arg1;
+            while (v1 < arg0.length) {
+                if (is_index_set(arg0, v1)) {
+                    let v2 = v1 - arg1;
+                    set(arg0, v2);
                 } else {
-                    let v4 = v2 - arg1;
-                    unset(arg0, v4);
+                    let v3 = v1 - arg1;
+                    unset(arg0, v3);
                 };
-                v2 = v2 + 1;
+                v1 = v1 + 1;
             };
-            v2 = arg0.length - arg1;
-            while (v2 < arg0.length) {
-                unset(arg0, v2);
-                v2 = v2 + 1;
+            v1 = arg0.length - arg1;
+            while (v1 < arg0.length) {
+                unset(arg0, v1);
+                v1 = v1 + 1;
             };
         };
     }
@@ -78,5 +78,5 @@ module 0x1::bit_vector {
         *0x1::vector::borrow_mut<bool>(&mut arg0.bit_field, arg1) = false;
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

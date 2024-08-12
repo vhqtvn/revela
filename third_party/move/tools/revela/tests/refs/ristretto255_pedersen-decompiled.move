@@ -86,5 +86,5 @@ module 0x1::ristretto255_pedersen {
         0x1::option::extract<0x1::ristretto255::RistrettoPoint>(&mut v0)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

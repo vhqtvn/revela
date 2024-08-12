@@ -63,5 +63,5 @@ module 0x1::string_utils {
         native_format<T0>(arg0, false, true, true, false)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

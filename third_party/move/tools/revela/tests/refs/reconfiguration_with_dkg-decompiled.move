@@ -35,5 +35,5 @@ module 0x1::reconfiguration_with_dkg {
         0x1::dkg::start(0x1::reconfiguration::current_epoch(), 0x1::randomness_config::current(), v2, v3);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

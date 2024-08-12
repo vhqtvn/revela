@@ -14,14 +14,13 @@ module 0x1::math_fixed {
         assert!(v0 <= 31, 0x1::error::invalid_state(1));
         let v1 = (v0 as u8);
         let v2 = arg0 % 2977044472;
-        let v3 = 595528;
-        let v4 = v2 / v3;
-        let v5 = v2 % v3;
-        let v6 = pow_raw(4295562865, v4);
-        let v7 = v6 + (v6 * 1241009291 * v4 >> 64);
-        let v8 = v7 * v5 >> 32 - v1;
-        let v9 = v8 * v5 >> 32;
-        (v7 << v1) + v8 + v9 / 2 + (v9 * v5 >> 32) / 6
+        let v3 = v2 / 595528;
+        let v4 = v2 % 595528;
+        let v5 = pow_raw(4295562865, v3);
+        let v6 = v5 + (v5 * 1241009291 * v3 >> 64);
+        let v7 = v6 * v4 >> 32 - v1;
+        let v8 = v7 * v4 >> 32;
+        (v6 << v1) + v7 + v8 / 2 + (v8 * v4 >> 32) / 6
     }
     
     public fun ln_plus_32ln2(arg0: 0x1::fixed_point32::FixedPoint32) : 0x1::fixed_point32::FixedPoint32 {
@@ -48,8 +47,8 @@ module 0x1::math_fixed {
     }
     
     fun pow_raw(arg0: u128, arg1: u128) : u128 {
-        let v0 = 18446744073709551616;
         arg0 = arg0 << 32;
+        let v0 = 18446744073709551616;
         while (arg1 != 0) {
             if (arg1 & 1 != 0) {
                 let v1 = v0 * (arg0 as u256);
@@ -62,5 +61,5 @@ module 0x1::math_fixed {
         ((v0 >> 32) as u128)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

@@ -42,7 +42,9 @@ module 0x1::reconfiguration {
     
     fun enable_reconfiguration(arg0: &signer) acquires DisableReconfiguration {
         0x1::system_addresses::assert_aptos_framework(arg0);
-        assert!(!reconfiguration_enabled(), 0x1::error::invalid_state(1));
+        if (reconfiguration_enabled()) {
+            abort 0x1::error::invalid_state(1)
+        };
         let DisableReconfiguration {  } = move_from<DisableReconfiguration>(0x1::signer::address_of(arg0));
     }
     
@@ -68,7 +70,12 @@ module 0x1::reconfiguration {
     }
     
     public(friend) fun reconfigure() acquires Configuration {
-        if (0x1::chain_status::is_genesis() || 0x1::timestamp::now_microseconds() == 0 || !reconfiguration_enabled()) {
+        if (0x1::chain_status::is_genesis() || 0x1::timestamp::now_microseconds() == 0) {
+            v4 = true;
+        } else {
+            v4 = !reconfiguration_enabled();
+        };
+        if (v4) {
             return
         };
         let v0 = borrow_global_mut<Configuration>(@0x1);
@@ -94,5 +101,5 @@ module 0x1::reconfiguration {
         0x1::reconfiguration_state::on_reconfig_finish();
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

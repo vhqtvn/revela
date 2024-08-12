@@ -19,14 +19,13 @@ module 0x1::smart_vector {
         if (v0) {
             (true, v1)
         } else {
-            let (v4, v5) = if (0x1::option::is_some<0x1::big_vector::BigVector<T0>>(&arg0.big_vec)) {
-                let v6 = 0x1::option::borrow<0x1::big_vector::BigVector<T0>>(&arg0.big_vec);
-                let (v7, v8) = 0x1::big_vector::index_of<T0>(v6, arg1);
-                (v7, v8 + 0x1::vector::length<T0>(&arg0.inline_vec))
+            if (0x1::option::is_some<0x1::big_vector::BigVector<T0>>(&arg0.big_vec)) {
+                let v4 = 0x1::option::borrow<0x1::big_vector::BigVector<T0>>(&arg0.big_vec);
+                let (v5, v6) = 0x1::big_vector::index_of<T0>(v4, arg1);
+                (v5, v6 + 0x1::vector::length<T0>(&arg0.inline_vec))
             } else {
                 (false, 0)
-            };
-            (v4, v5)
+            }
         }
     }
     
@@ -94,7 +93,9 @@ module 0x1::smart_vector {
     }
     
     public fun pop_back<T0>(arg0: &mut SmartVector<T0>) : T0 {
-        assert!(!is_empty<T0>(arg0), 0x1::error::invalid_state(3));
+        if (is_empty<T0>(arg0)) {
+            abort 0x1::error::invalid_state(3)
+        };
         let v0 = &mut arg0.big_vec;
         if (0x1::option::is_some<0x1::big_vector::BigVector<T0>>(v0)) {
             let v2 = 0x1::option::extract<0x1::big_vector::BigVector<T0>>(v0);
@@ -151,27 +152,36 @@ module 0x1::smart_vector {
     }
     
     public fun reverse<T0: store>(arg0: &mut SmartVector<T0>) {
-        let v0 = 0;
-        let v1 = 0x1::vector::empty<T0>();
-        while (v0 < 0x1::vector::length<T0>(&arg0.inline_vec)) {
-            0x1::vector::push_back<T0>(&mut v1, pop_back<T0>(arg0));
-            v0 = v0 + 1;
+        let v0 = 0x1::vector::empty<T0>();
+        let v1 = 0;
+        while (v1 < 0x1::vector::length<T0>(&arg0.inline_vec)) {
+            0x1::vector::push_back<T0>(&mut v0, pop_back<T0>(arg0));
+            v1 = v1 + 1;
         };
-        0x1::vector::reverse<T0>(&mut v1);
+        0x1::vector::reverse<T0>(&mut v0);
         if (0x1::option::is_some<0x1::big_vector::BigVector<T0>>(&arg0.big_vec)) {
             let v2 = 0x1::option::borrow_mut<0x1::big_vector::BigVector<T0>>(&mut arg0.big_vec);
             0x1::big_vector::reverse<T0>(v2);
         };
         let v3 = 0x1::vector::empty<T0>();
-        while (!0x1::vector::is_empty<T0>(&mut arg0.inline_vec)) {
+        loop {
+            if (0x1::vector::is_empty<T0>(&mut arg0.inline_vec)) {
+                break
+            };
             0x1::vector::push_back<T0>(&mut v3, 0x1::vector::pop_back<T0>(&mut arg0.inline_vec));
         };
         0x1::vector::reverse<T0>(&mut v3);
-        while (!0x1::vector::is_empty<T0>(&mut v1)) {
-            0x1::vector::push_back<T0>(&mut arg0.inline_vec, 0x1::vector::pop_back<T0>(&mut v1));
+        loop {
+            if (0x1::vector::is_empty<T0>(&mut v0)) {
+                break
+            };
+            0x1::vector::push_back<T0>(&mut arg0.inline_vec, 0x1::vector::pop_back<T0>(&mut v0));
         };
-        0x1::vector::destroy_empty<T0>(v1);
-        while (!0x1::vector::is_empty<T0>(&mut v3)) {
+        0x1::vector::destroy_empty<T0>(v0);
+        loop {
+            if (0x1::vector::is_empty<T0>(&mut v3)) {
+                break
+            };
             push_back<T0>(arg0, 0x1::vector::pop_back<T0>(&mut v3));
         };
         0x1::vector::destroy_empty<T0>(v3);
@@ -297,5 +307,5 @@ module 0x1::smart_vector {
         v0
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

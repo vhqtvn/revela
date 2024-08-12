@@ -9,5 +9,5 @@ module 0x1::debug {
         native_print(native_stack_trace());
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

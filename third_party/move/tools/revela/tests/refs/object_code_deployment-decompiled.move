@@ -24,7 +24,7 @@ module 0x1::object_code_deployment {
     public entry fun publish(arg0: &signer, arg1: vector<u8>, arg2: vector<vector<u8>>) {
         assert!(0x1::features::is_object_code_deployment_enabled(), 0x1::error::unavailable(1));
         let v0 = 0x1::account::get_sequence_number(0x1::signer::address_of(arg0)) + 1;
-        let v1 = b"";
+        let v1 = 0x1::vector::empty<u8>();
         let v2 = b"aptos_framework::object_code_deployment";
         0x1::vector::append<u8>(&mut v1, 0x1::bcs::to_bytes<vector<u8>>(&v2));
         0x1::vector::append<u8>(&mut v1, 0x1::bcs::to_bytes<u64>(&v0));
@@ -51,5 +51,5 @@ module 0x1::object_code_deployment {
         0x1::event::emit<Upgrade>(v4);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

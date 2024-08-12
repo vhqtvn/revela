@@ -71,5 +71,5 @@ module 0x1337::token_coin_swap {
         abort 0x1::error::invalid_argument(8)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

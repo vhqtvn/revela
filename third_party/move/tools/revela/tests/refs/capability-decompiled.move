@@ -26,13 +26,16 @@ module 0x1::capability {
     }
     
     fun add_element<T0: drop>(arg0: &mut vector<T0>, arg1: T0) {
-        if (!0x1::vector::contains<T0>(arg0, &arg1)) {
+        if (0x1::vector::contains<T0>(arg0, &arg1)) {
+        } else {
             0x1::vector::push_back<T0>(arg0, arg1);
         };
     }
     
     public fun create<T0>(arg0: &signer, arg1: &T0) {
-        assert!(!exists<CapState<T0>>(0x1::signer::address_of(arg0)), 0x1::error::already_exists(1));
+        if (exists<CapState<T0>>(0x1::signer::address_of(arg0))) {
+            abort 0x1::error::already_exists(1)
+        };
         let v0 = CapState<T0>{delegates: 0x1::vector::empty<address>()};
         move_to<CapState<T0>>(arg0, v0);
     }
@@ -59,11 +62,11 @@ module 0x1::capability {
     }
     
     public fun revoke<T0>(arg0: Cap<T0>, arg1: &T0, arg2: address) acquires CapDelegateState, CapState {
-        if (!exists<CapDelegateState<T0>>(arg2)) {
+        if (exists<CapDelegateState<T0>>(arg2)) {
+            let CapDelegateState {  } = move_from<CapDelegateState<T0>>(arg2);
+            remove_element<address>(&mut borrow_global_mut<CapState<T0>>(arg0.root).delegates, &arg2);
             return
         };
-        let CapDelegateState {  } = move_from<CapDelegateState<T0>>(arg2);
-        remove_element<address>(&mut borrow_global_mut<CapState<T0>>(arg0.root).delegates, &arg2);
     }
     
     public fun root_addr<T0>(arg0: Cap<T0>, arg1: &T0) : address {
@@ -84,5 +87,5 @@ module 0x1::capability {
         }
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

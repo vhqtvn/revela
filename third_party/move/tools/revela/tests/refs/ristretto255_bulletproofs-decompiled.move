@@ -32,5 +32,5 @@ module 0x1::ristretto255_bulletproofs {
         verify_range_proof_internal(v1, &v2, &v3, arg1.bytes, arg2, arg3)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

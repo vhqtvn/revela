@@ -59,5 +59,5 @@ module 0x1::bls12381_algebra {
         dummy_field: bool,
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

@@ -27,11 +27,12 @@ module 0x1::config_buffer {
     
     public fun initialize(arg0: &signer) {
         0x1::system_addresses::assert_aptos_framework(arg0);
-        if (!exists<PendingConfigs>(@0x1)) {
+        if (exists<PendingConfigs>(@0x1)) {
+        } else {
             let v0 = PendingConfigs{configs: 0x1::simple_map::new<0x1::string::String, 0x1::any::Any>()};
             move_to<PendingConfigs>(arg0, v0);
         };
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

@@ -5,7 +5,8 @@ module 0x1::randomness_config_seqnum {
     
     public fun initialize(arg0: &signer) {
         0x1::system_addresses::assert_aptos_framework(arg0);
-        if (!exists<RandomnessConfigSeqNum>(@0x1)) {
+        if (exists<RandomnessConfigSeqNum>(@0x1)) {
+        } else {
             let v0 = RandomnessConfigSeqNum{seq_num: 0};
             move_to<RandomnessConfigSeqNum>(arg0, v0);
         };
@@ -29,5 +30,5 @@ module 0x1::randomness_config_seqnum {
         0x1::config_buffer::upsert<RandomnessConfigSeqNum>(v0);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

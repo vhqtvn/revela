@@ -18,7 +18,9 @@ module 0x1::acl {
     }
     
     public fun add(arg0: &mut ACL, arg1: address) {
-        assert!(!0x1::vector::contains<address>(&mut arg0.list, &arg1), 0x1::error::invalid_argument(0));
+        if (0x1::vector::contains<address>(&mut arg0.list, &arg1)) {
+            abort 0x1::error::invalid_argument(0)
+        };
         0x1::vector::push_back<address>(&mut arg0.list, arg1);
     }
     
@@ -26,5 +28,5 @@ module 0x1::acl {
         assert!(contains(arg0, arg1), 0x1::error::invalid_argument(1));
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

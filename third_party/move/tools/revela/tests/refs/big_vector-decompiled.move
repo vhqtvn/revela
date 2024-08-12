@@ -102,7 +102,9 @@ module 0x1::big_vector {
     }
     
     public fun pop_back<T0>(arg0: &mut BigVector<T0>) : T0 {
-        assert!(!is_empty<T0>(arg0), 0x1::error::invalid_state(3));
+        if (is_empty<T0>(arg0)) {
+            abort 0x1::error::invalid_state(3)
+        };
         let v0 = 0x1::table_with_length::length<u64, vector<T0>>(&arg0.buckets);
         let v1 = 0x1::table_with_length::borrow_mut<u64, vector<T0>>(&mut arg0.buckets, v0 - 1);
         if (0x1::vector::is_empty<T0>(v1)) {
@@ -151,12 +153,12 @@ module 0x1::big_vector {
             0x1::vector::destroy_empty<T0>(v1);
         };
         0x1::vector::reverse<vector<T0>>(&mut v0);
-        let v6 = 0;
+        v3 = 0;
         assert!(0x1::table_with_length::length<u64, vector<T0>>(&arg0.buckets) == 0, 0);
-        while (v6 < v2) {
-            let v7 = 0x1::vector::pop_back<vector<T0>>(&mut v0);
-            0x1::table_with_length::add<u64, vector<T0>>(&mut arg0.buckets, v6, v7);
-            v6 = v6 + 1;
+        while (v3 < v2) {
+            let v6 = 0x1::vector::pop_back<vector<T0>>(&mut v0);
+            0x1::table_with_length::add<u64, vector<T0>>(&mut arg0.buckets, v3, v6);
+            v3 = v3 + 1;
         };
         0x1::vector::destroy_empty<vector<T0>>(v0);
     }
@@ -227,5 +229,5 @@ module 0x1::big_vector {
         v0
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

@@ -10,9 +10,7 @@ module 0x1::type_info {
     }
     
     public fun chain_id() : u8 {
-        if (!0x1::features::aptos_stdlib_chain_id_enabled()) {
-            abort 0x1::error::invalid_state(1)
-        };
+        assert!(0x1::features::aptos_stdlib_chain_id_enabled(), 0x1::error::invalid_state(1));
         chain_id_internal()
     }
     
@@ -31,5 +29,5 @@ module 0x1::type_info {
     
     native public fun type_name<T0>() : 0x1::string::String;
     native public fun type_of<T0>() : TypeInfo;
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

@@ -8,7 +8,7 @@ module 0x1::validator_consensus_info {
     public fun default() : ValidatorConsensusInfo {
         ValidatorConsensusInfo{
             addr         : @0x0, 
-            pk_bytes     : b"", 
+            pk_bytes     : 0x1::vector::empty<u8>(), 
             voting_power : 0,
         }
     }
@@ -33,5 +33,5 @@ module 0x1::validator_consensus_info {
         }
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

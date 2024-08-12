@@ -61,12 +61,12 @@ module 0x1::table_with_length {
     }
     
     public fun upsert<T0: copy + drop, T1: drop>(arg0: &mut TableWithLength<T0, T1>, arg1: T0, arg2: T1) {
-        if (!0x1::table::contains<T0, T1>(&arg0.inner, arg1)) {
-            add<T0, T1>(arg0, arg1, arg2);
-        } else {
+        if (0x1::table::contains<T0, T1>(&arg0.inner, arg1)) {
             *0x1::table::borrow_mut<T0, T1>(&mut arg0.inner, arg1) = arg2;
+        } else {
+            add<T0, T1>(arg0, arg1, arg2);
         };
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

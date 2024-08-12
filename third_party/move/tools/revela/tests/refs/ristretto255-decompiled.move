@@ -35,9 +35,7 @@ module 0x1::ristretto255 {
     }
     
     public fun double_scalar_mul(arg0: &Scalar, arg1: &RistrettoPoint, arg2: &Scalar, arg3: &RistrettoPoint) : RistrettoPoint {
-        if (!0x1::features::bulletproofs_enabled()) {
-            abort 0x1::error::invalid_state(5)
-        };
+        assert!(0x1::features::bulletproofs_enabled(), 0x1::error::invalid_state(5));
         RistrettoPoint{handle: double_scalar_mul_internal(arg1.handle, arg3.handle, arg0.data, arg2.data)}
     }
     
@@ -48,8 +46,12 @@ module 0x1::ristretto255 {
     }
     
     public fun multi_scalar_mul(arg0: &vector<RistrettoPoint>, arg1: &vector<Scalar>) : RistrettoPoint {
-        assert!(!0x1::vector::is_empty<RistrettoPoint>(arg0), 0x1::error::invalid_argument(2));
-        assert!(!0x1::vector::is_empty<Scalar>(arg1), 0x1::error::invalid_argument(3));
+        if (0x1::vector::is_empty<RistrettoPoint>(arg0)) {
+            abort 0x1::error::invalid_argument(2)
+        };
+        if (0x1::vector::is_empty<Scalar>(arg1)) {
+            abort 0x1::error::invalid_argument(3)
+        };
         let v0 = 0x1::vector::length<RistrettoPoint>(arg0) == 0x1::vector::length<Scalar>(arg1);
         assert!(v0, 0x1::error::invalid_argument(1));
         RistrettoPoint{handle: multi_scalar_mul_internal<RistrettoPoint, Scalar>(arg0, arg1)}
@@ -158,9 +160,7 @@ module 0x1::ristretto255 {
     
     native fun point_add_internal(arg0: &RistrettoPoint, arg1: &RistrettoPoint, arg2: bool) : u64;
     public fun point_clone(arg0: &RistrettoPoint) : RistrettoPoint {
-        if (!0x1::features::bulletproofs_enabled()) {
-            abort 0x1::error::invalid_state(5)
-        };
+        assert!(0x1::features::bulletproofs_enabled(), 0x1::error::invalid_state(5));
         RistrettoPoint{handle: point_clone_internal(arg0.handle)}
     }
     
@@ -305,5 +305,5 @@ module 0x1::ristretto255 {
         Scalar{data: x"0000000000000000000000000000000000000000000000000000000000000000"}
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

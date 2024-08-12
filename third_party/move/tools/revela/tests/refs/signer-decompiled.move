@@ -4,5 +4,5 @@ module 0x1::signer {
     }
     
     native public fun borrow_address(arg0: &signer) : &address;
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

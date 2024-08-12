@@ -57,22 +57,22 @@ module 0x1::staking_config {
     }
     
     public fun get_reward_rate(arg0: &StakingConfig) : (u64, u64) acquires StakingRewardsConfig {
-        if (0x1::features::periodical_reward_rate_decrease_enabled()) {
+        let (v0, v1) = if (0x1::features::periodical_reward_rate_decrease_enabled()) {
             let v2 = borrow_global<StakingRewardsConfig>(@0x1).rewards_rate;
-            let (v3, v4) = if (0x1::fixed_point64::is_zero(v2)) {
-                (0, 1)
+            if (0x1::fixed_point64::is_zero(v2)) {
+                (1, 0)
             } else {
-                let v5 = 0x1::fixed_point64::divide_u128((1000000 as u128), v2);
-                let v6 = v5;
-                if (v5 > 18446744073709551615) {
-                    v6 = 18446744073709551615;
+                let v3 = 0x1::fixed_point64::divide_u128(1000000, v2);
+                let v4 = v3;
+                if (v3 > 18446744073709551615) {
+                    v4 = 18446744073709551615;
                 };
-                ((0x1::fixed_point64::multiply_u128(v6, v2) as u64), (v6 as u64))
-            };
-            (v3, v4)
+                ((v4 as u64), (0x1::fixed_point64::multiply_u128(v4, v2) as u64))
+            }
         } else {
-            (arg0.rewards_rate, arg0.rewards_rate_denominator)
-        }
+            (arg0.rewards_rate_denominator, arg0.rewards_rate)
+        };
+        (v1, v0)
     }
     
     public fun get_voting_power_increase_limit(arg0: &StakingConfig) : u64 {
@@ -143,7 +143,9 @@ module 0x1::staking_config {
     }
     
     public fun update_rewards_rate(arg0: &signer, arg1: u64, arg2: u64) acquires StakingConfig {
-        assert!(!0x1::features::periodical_reward_rate_decrease_enabled(), 0x1::error::invalid_state(10));
+        if (0x1::features::periodical_reward_rate_decrease_enabled()) {
+            abort 0x1::error::invalid_state(10)
+        };
         0x1::system_addresses::assert_aptos_framework(arg0);
         assert!(arg2 > 0, 0x1::error::invalid_argument(2));
         assert!(arg1 <= 1000000, 0x1::error::invalid_argument(5));
@@ -171,5 +173,5 @@ module 0x1::staking_config {
         assert!(arg2 > 0, 0x1::error::invalid_argument(9));
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

@@ -32,7 +32,47 @@ module 0x1::system_addresses {
     }
     
     public fun is_framework_reserved_address(arg0: address) : bool {
-        is_aptos_framework_address(arg0) || arg0 == @0x2 || arg0 == @0x3 || arg0 == @0x4 || arg0 == @0x5 || arg0 == @0x6 || arg0 == @0x7 || arg0 == @0x8 || arg0 == @0x9 || arg0 == @0xa
+        if (is_aptos_framework_address(arg0) || arg0 == @0x2) {
+            v0 = true;
+        } else {
+            v0 = arg0 == @0x3;
+        };
+        if (v0) {
+            v0 = true;
+        } else {
+            v0 = arg0 == @0x4;
+        };
+        if (v0) {
+            v0 = true;
+        } else {
+            v0 = arg0 == @0x5;
+        };
+        if (v0) {
+            v0 = true;
+        } else {
+            v0 = arg0 == @0x6;
+        };
+        if (v0) {
+            v0 = true;
+        } else {
+            v0 = arg0 == @0x7;
+        };
+        if (v0) {
+            v0 = true;
+        } else {
+            v0 = arg0 == @0x8;
+        };
+        if (v0) {
+            v0 = true;
+        } else {
+            v0 = arg0 == @0x9;
+        };
+        if (v0) {
+            v0 = true;
+        } else {
+            v0 = arg0 == @0xa;
+        };
+        v0
     }
     
     public fun is_reserved_address(arg0: address) : bool {
@@ -47,5 +87,5 @@ module 0x1::system_addresses {
         arg0 == @0x3001
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

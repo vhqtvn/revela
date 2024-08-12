@@ -1,4 +1,8 @@
 module 0x1::bls12381 {
+    struct Signature has copy, drop, store {
+        bytes: vector<u8>,
+    }
+    
     struct AggrOrMultiSignature has copy, drop, store {
         bytes: vector<u8>,
     }
@@ -16,10 +20,6 @@ module 0x1::bls12381 {
     }
     
     struct PublicKeyWithPoP has copy, drop, store {
-        bytes: vector<u8>,
-    }
-    
-    struct Signature has copy, drop, store {
         bytes: vector<u8>,
     }
     
@@ -131,5 +131,5 @@ module 0x1::bls12381 {
     }
     
     native fun verify_signature_share_internal(arg0: vector<u8>, arg1: vector<u8>, arg2: vector<u8>) : bool;
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

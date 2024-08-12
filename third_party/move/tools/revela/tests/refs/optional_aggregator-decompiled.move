@@ -139,5 +139,5 @@ module 0x1::optional_aggregator {
         v1
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

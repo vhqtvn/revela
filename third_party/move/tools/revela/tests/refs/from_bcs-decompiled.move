@@ -42,5 +42,5 @@ module 0x1::from_bcs {
         from_bytes<u8>(arg0)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

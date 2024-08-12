@@ -1,4 +1,46 @@
 module 0x1::vesting {
+    struct Distribute has drop, store {
+        admin: address,
+        vesting_contract_address: address,
+        amount: u64,
+    }
+    
+    struct DistributeEvent has drop, store {
+        admin: address,
+        vesting_contract_address: address,
+        amount: u64,
+    }
+    
+    struct ResetLockup has drop, store {
+        admin: address,
+        vesting_contract_address: address,
+        staking_pool_address: address,
+        new_lockup_expiration_secs: u64,
+    }
+    
+    struct ResetLockupEvent has drop, store {
+        admin: address,
+        vesting_contract_address: address,
+        staking_pool_address: address,
+        new_lockup_expiration_secs: u64,
+    }
+    
+    struct UpdateVoter has drop, store {
+        admin: address,
+        vesting_contract_address: address,
+        staking_pool_address: address,
+        old_voter: address,
+        new_voter: address,
+    }
+    
+    struct UpdateVoterEvent has drop, store {
+        admin: address,
+        vesting_contract_address: address,
+        staking_pool_address: address,
+        old_voter: address,
+        new_voter: address,
+    }
+    
     struct AdminStore has key {
         vesting_contracts: vector<address>,
         nonce: u64,
@@ -35,32 +77,6 @@ module 0x1::vesting {
         vesting_contract_address: address,
         staking_pool_address: address,
         commission_percentage: u64,
-    }
-    
-    struct Distribute has drop, store {
-        admin: address,
-        vesting_contract_address: address,
-        amount: u64,
-    }
-    
-    struct DistributeEvent has drop, store {
-        admin: address,
-        vesting_contract_address: address,
-        amount: u64,
-    }
-    
-    struct ResetLockup has drop, store {
-        admin: address,
-        vesting_contract_address: address,
-        staking_pool_address: address,
-        new_lockup_expiration_secs: u64,
-    }
-    
-    struct ResetLockupEvent has drop, store {
-        admin: address,
-        vesting_contract_address: address,
-        staking_pool_address: address,
-        new_lockup_expiration_secs: u64,
     }
     
     struct SetBeneficiary has drop, store {
@@ -126,22 +142,6 @@ module 0x1::vesting {
         old_operator: address,
         new_operator: address,
         commission_percentage: u64,
-    }
-    
-    struct UpdateVoter has drop, store {
-        admin: address,
-        vesting_contract_address: address,
-        staking_pool_address: address,
-        old_voter: address,
-        new_voter: address,
-    }
-    
-    struct UpdateVoterEvent has drop, store {
-        admin: address,
-        vesting_contract_address: address,
-        staking_pool_address: address,
-        old_voter: address,
-        new_voter: address,
     }
     
     struct Vest has drop, store {
@@ -356,27 +356,30 @@ module 0x1::vesting {
     }
     
     public fun create_vesting_contract(arg0: &signer, arg1: &vector<address>, arg2: 0x1::simple_map::SimpleMap<address, 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>>, arg3: VestingSchedule, arg4: address, arg5: address, arg6: address, arg7: u64, arg8: vector<u8>) : address acquires AdminStore {
-        assert!(!0x1::system_addresses::is_reserved_address(arg4), 0x1::error::invalid_argument(1));
+        if (0x1::system_addresses::is_reserved_address(arg4)) {
+            abort 0x1::error::invalid_argument(1)
+        };
         0x1::aptos_account::assert_account_is_registered_for_apt(arg4);
         assert!(0x1::vector::length<address>(arg1) > 0, 0x1::error::invalid_argument(4));
         assert!(0x1::simple_map::length<address, 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>>(&arg2) == 0x1::vector::length<address>(arg1), 0x1::error::invalid_argument(5));
         let v0 = 0x1::coin::zero<0x1::aptos_coin::AptosCoin>();
-        let v1 = 0;
-        let v2 = 0x1::pool_u64::create(30);
+        let v1 = 0x1::pool_u64::create(30);
+        let v2 = 0;
         let v3 = 0;
-        while (v3 < 0x1::vector::length<address>(arg1)) {
-            let v4 = *0x1::vector::borrow<address>(arg1, v3);
+        while (v2 < 0x1::vector::length<address>(arg1)) {
+            let v4 = *0x1::vector::borrow<address>(arg1, v2);
             let (_, v6) = 0x1::simple_map::remove<address, 0x1::coin::Coin<0x1::aptos_coin::AptosCoin>>(&mut arg2, &v4);
             let v7 = v6;
             let v8 = 0x1::coin::value<0x1::aptos_coin::AptosCoin>(&v7);
             0x1::coin::merge<0x1::aptos_coin::AptosCoin>(&mut v0, v7);
-            0x1::pool_u64::buy_in(&mut v2, v4, v8);
-            v1 = v1 + v8;
-            v3 = v3 + 1;
+            0x1::pool_u64::buy_in(&mut v1, v4, v8);
+            v3 = v3 + v8;
+            v2 = v2 + 1;
         };
-        assert!(v1 > 0, 0x1::error::invalid_argument(12));
+        assert!(v3 > 0, 0x1::error::invalid_argument(12));
         let v9 = 0x1::signer::address_of(arg0);
-        if (!exists<AdminStore>(v9)) {
+        if (exists<AdminStore>(v9)) {
+        } else {
             let v10 = AdminStore{
                 vesting_contracts : 0x1::vector::empty<address>(), 
                 nonce             : 0, 
@@ -394,7 +397,7 @@ module 0x1::vesting {
             let v17 = CreateVestingContract{
                 operator                 : arg5, 
                 voter                    : arg6, 
-                grant_amount             : v1, 
+                grant_amount             : v3, 
                 withdrawal_address       : arg4, 
                 vesting_contract_address : v15, 
                 staking_pool_address     : v14, 
@@ -405,7 +408,7 @@ module 0x1::vesting {
         let v18 = CreateVestingContractEvent{
             operator                 : arg5, 
             voter                    : arg6, 
-            grant_amount             : v1, 
+            grant_amount             : v3, 
             withdrawal_address       : arg4, 
             vesting_contract_address : v15, 
             staking_pool_address     : v14, 
@@ -431,12 +434,12 @@ module 0x1::vesting {
         let v30 = VestingContract{
             state                  : 1, 
             admin                  : v9, 
-            grant_pool             : v2, 
+            grant_pool             : v1, 
             beneficiaries          : v19, 
             vesting_schedule       : arg3, 
             withdrawal_address     : arg4, 
             staking                : v20, 
-            remaining_grant        : v1, 
+            remaining_grant        : v3, 
             signer_cap             : v12, 
             update_operator_events : v21, 
             update_voter_events    : v22, 
@@ -592,7 +595,8 @@ module 0x1::vesting {
     public entry fun set_management_role(arg0: &signer, arg1: address, arg2: 0x1::string::String, arg3: address) acquires VestingAccountManagement, VestingContract {
         let v0 = borrow_global_mut<VestingContract>(arg1);
         verify_admin(arg0, v0);
-        if (!exists<VestingAccountManagement>(arg1)) {
+        if (exists<VestingAccountManagement>(arg1)) {
+        } else {
             let v1 = get_vesting_account_signer_internal(v0);
             let v2 = VestingAccountManagement{roles: 0x1::simple_map::create<0x1::string::String, address>()};
             move_to<VestingAccountManagement>(&v1, v2);
@@ -612,12 +616,13 @@ module 0x1::vesting {
         if (0x1::vector::contains<address>(v1, &arg1)) {
             return arg1
         };
-        let v2 = @0x0;
+        let v2 = borrow_global<VestingContract>(arg0);
         let v3 = 0;
+        arg0 = @0x0;
         while (v3 < 0x1::vector::length<address>(v1)) {
             let v4 = 0x1::vector::borrow<address>(v1, v3);
-            let v5 = if (arg1 == get_beneficiary(borrow_global<VestingContract>(arg0), *v4)) {
-                v2 = *v4;
+            let v5 = if (arg1 == get_beneficiary(v2, *v4)) {
+                arg0 = *v4;
                 true
             } else {
                 false
@@ -627,7 +632,7 @@ module 0x1::vesting {
             };
             v3 = v3 + 1;
         };
-        v2
+        arg0
     }
     
     public fun stake_pool_address(arg0: address) : address acquires VestingContract {
@@ -789,10 +794,10 @@ module 0x1::vesting {
     }
     
     public fun vesting_contracts(arg0: address) : vector<address> acquires AdminStore {
-        if (!exists<AdminStore>(arg0)) {
-            0x1::vector::empty<address>()
-        } else {
+        if (exists<AdminStore>(arg0)) {
             borrow_global<AdminStore>(arg0).vesting_contracts
+        } else {
+            0x1::vector::empty<address>()
         }
     }
     
@@ -818,5 +823,5 @@ module 0x1::vesting {
         0x1::coin::withdraw<0x1::aptos_coin::AptosCoin>(&v1, v0)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

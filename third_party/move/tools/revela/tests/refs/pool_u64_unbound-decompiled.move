@@ -35,8 +35,10 @@ module 0x1::pool_u64_unbound {
         } else {
             if (arg2 > 0) {
                 0x1::table_with_length::add<address, u128>(&mut arg0.shares, arg1, arg2);
-            };
-            arg2
+                arg2
+            } else {
+                arg2
+            }
         }
     }
     
@@ -175,5 +177,5 @@ module 0x1::pool_u64_unbound {
         arg0.total_coins = arg1;
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

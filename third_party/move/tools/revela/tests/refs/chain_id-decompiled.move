@@ -13,5 +13,5 @@ module 0x1::chain_id {
         move_to<ChainId>(arg0, v0);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

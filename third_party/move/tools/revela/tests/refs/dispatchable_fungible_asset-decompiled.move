@@ -88,5 +88,5 @@ module 0x1::dispatchable_fungible_asset {
         }
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

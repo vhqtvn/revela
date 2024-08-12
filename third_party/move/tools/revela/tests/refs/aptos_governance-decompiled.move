@@ -1,8 +1,4 @@
 module 0x1::aptos_governance {
-    struct ApprovedExecutionHashes has key {
-        hashes: 0x1::simple_map::SimpleMap<u64, vector<u8>>,
-    }
-    
     struct CreateProposal has drop, store {
         proposer: address,
         stake_pool: address,
@@ -17,6 +13,26 @@ module 0x1::aptos_governance {
         proposal_id: u64,
         execution_hash: vector<u8>,
         proposal_metadata: 0x1::simple_map::SimpleMap<0x1::string::String, vector<u8>>,
+    }
+    
+    struct Vote has drop, store {
+        proposal_id: u64,
+        voter: address,
+        stake_pool: address,
+        num_votes: u64,
+        should_pass: bool,
+    }
+    
+    struct VoteEvent has drop, store {
+        proposal_id: u64,
+        voter: address,
+        stake_pool: address,
+        num_votes: u64,
+        should_pass: bool,
+    }
+    
+    struct ApprovedExecutionHashes has key {
+        hashes: 0x1::simple_map::SimpleMap<u64, vector<u8>>,
     }
     
     struct GovernanceConfig has key {
@@ -50,22 +66,6 @@ module 0x1::aptos_governance {
         min_voting_threshold: u128,
         required_proposer_stake: u64,
         voting_duration_secs: u64,
-    }
-    
-    struct Vote has drop, store {
-        proposal_id: u64,
-        voter: address,
-        stake_pool: address,
-        num_votes: u64,
-        should_pass: bool,
-    }
-    
-    struct VoteEvent has drop, store {
-        proposal_id: u64,
-        voter: address,
-        stake_pool: address,
-        num_votes: u64,
-        should_pass: bool,
     }
     
     struct VotingRecords has key {
@@ -218,13 +218,13 @@ module 0x1::aptos_governance {
             stake_pool  : arg0, 
             proposal_id : arg1,
         };
-        let v2 = 0;
+        arg1 = 0;
         if (0x1::features::partial_governance_voting_enabled()) {
-            let v3 = &borrow_global<VotingRecordsV2>(@0x1).votes;
-            let v4 = 0;
-            v2 = *0x1::smart_table::borrow_with_default<RecordKey, u64>(v3, v1, &v4);
+            let v2 = &borrow_global<VotingRecordsV2>(@0x1).votes;
+            let v3 = 0;
+            arg1 = *0x1::smart_table::borrow_with_default<RecordKey, u64>(v2, v1, &v3);
         };
-        get_voting_power(arg0) - v2
+        get_voting_power(arg0) - arg1
     }
     
     public fun get_required_proposer_stake() : u64 acquires GovernanceConfig {
@@ -330,7 +330,8 @@ module 0x1::aptos_governance {
     public fun store_signer_cap(arg0: &signer, arg1: address, arg2: 0x1::account::SignerCapability) acquires GovernanceResponsbility {
         0x1::system_addresses::assert_aptos_framework(arg0);
         0x1::system_addresses::assert_framework_reserved(arg1);
-        if (!exists<GovernanceResponsbility>(@0x1)) {
+        if (exists<GovernanceResponsbility>(@0x1)) {
+        } else {
             let v0 = 0x1::simple_map::create<address, 0x1::account::SignerCapability>();
             let v1 = GovernanceResponsbility{signer_caps: v0};
             move_to<GovernanceResponsbility>(arg0, v1);
@@ -388,7 +389,9 @@ module 0x1::aptos_governance {
             *v7 = *v7 + v3;
         } else {
             let v8 = borrow_global_mut<VotingRecords>(@0x1);
-            assert!(!0x1::table::contains<RecordKey, bool>(&v8.votes, v5), 0x1::error::invalid_argument(4));
+            if (0x1::table::contains<RecordKey, bool>(&v8.votes, v5)) {
+                abort 0x1::error::invalid_argument(4)
+            };
             0x1::table::add<RecordKey, bool>(&mut v8.votes, v5, true);
         };
         if (0x1::features::module_event_migration_enabled()) {
@@ -412,7 +415,9 @@ module 0x1::aptos_governance {
         if (0x1::voting::get_proposal_state<0x1::governance_proposal::GovernanceProposal>(@0x1, arg2) == 1) {
             add_approved_script_hash(arg2);
         };
+        return
+        abort 0x1::error::invalid_argument(4)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

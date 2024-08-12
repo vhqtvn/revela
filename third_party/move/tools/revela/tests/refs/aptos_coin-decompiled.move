@@ -63,16 +63,16 @@ module 0x1::aptos_coin {
     
     fun find_delegation(arg0: address) : 0x1::option::Option<u64> acquires Delegations {
         let v0 = &borrow_global<Delegations>(@0x3000).inner;
-        let v1 = 0;
-        let v2 = 0x1::option::none<u64>();
-        while (v1 < 0x1::vector::length<DelegatedMintCapability>(v0)) {
-            if (0x1::vector::borrow<DelegatedMintCapability>(v0, v1).to == arg0) {
-                v2 = 0x1::option::some<u64>(v1);
+        let v1 = 0x1::option::none<u64>();
+        let v2 = 0;
+        while (v2 < 0x1::vector::length<DelegatedMintCapability>(v0)) {
+            if (0x1::vector::borrow<DelegatedMintCapability>(v0, v2).to == arg0) {
+                v1 = 0x1::option::some<u64>(v2);
                 break
             };
-            v1 = v1 + 1;
+            v2 = v2 + 1;
         };
-        v2
+        v1
     }
     
     public fun has_mint_capability(arg0: &signer) : bool {
@@ -90,5 +90,5 @@ module 0x1::aptos_coin {
         (v2, v4)
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

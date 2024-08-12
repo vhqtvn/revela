@@ -41,8 +41,10 @@ module 0x1::pool_u64 {
                 assert!(v3, 0x1::error::invalid_state(2));
                 0x1::vector::push_back<address>(&mut arg0.shareholders, arg1);
                 0x1::simple_map::add<address, u64>(&mut arg0.shares, arg1, arg2);
-            };
-            arg2
+                arg2
+            } else {
+                arg2
+            }
         }
     }
     
@@ -177,5 +179,5 @@ module 0x1::pool_u64 {
         arg0.total_coins = arg1;
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

@@ -93,13 +93,21 @@ module 0x1::account {
     }
     
     public(friend) fun create_account(arg0: address) : signer {
-        assert!(!exists<Account>(arg0), 0x1::error::already_exists(1));
-        assert!(arg0 != @0x3001 && arg0 != @0x1 && arg0 != @0x1337, 0x1::error::invalid_argument(5));
+        if (exists<Account>(arg0)) {
+            abort 0x1::error::already_exists(1)
+        };
+        if (arg0 != @0x3001 && arg0 != @0x1) {
+            v0 = arg0 != @0x1337;
+        } else {
+            v0 = false;
+        };
+        assert!(v0, 0x1::error::invalid_argument(5));
         create_account_unchecked(arg0)
     }
     
     public fun create_account_if_does_not_exist(arg0: address) {
-        if (!exists<Account>(arg0)) {
+        if (exists<Account>(arg0)) {
+        } else {
             create_account(arg0);
         };
     }
@@ -135,7 +143,47 @@ module 0x1::account {
     }
     
     public(friend) fun create_framework_reserved_account(arg0: address) : (signer, SignerCapability) {
-        assert!(arg0 == @0x1 || arg0 == @0x2 || arg0 == @0x3 || arg0 == @0x4 || arg0 == @0x5 || arg0 == @0x6 || arg0 == @0x7 || arg0 == @0x8 || arg0 == @0x9 || arg0 == @0xa, 0x1::error::permission_denied(11));
+        if (arg0 == @0x1 || arg0 == @0x2) {
+            v1 = true;
+        } else {
+            v1 = arg0 == @0x3;
+        };
+        if (v1) {
+            v1 = true;
+        } else {
+            v1 = arg0 == @0x4;
+        };
+        if (v1) {
+            v1 = true;
+        } else {
+            v1 = arg0 == @0x5;
+        };
+        if (v1) {
+            v1 = true;
+        } else {
+            v1 = arg0 == @0x6;
+        };
+        if (v1) {
+            v1 = true;
+        } else {
+            v1 = arg0 == @0x7;
+        };
+        if (v1) {
+            v1 = true;
+        } else {
+            v1 = arg0 == @0x8;
+        };
+        if (v1) {
+            v1 = true;
+        } else {
+            v1 = arg0 == @0x9;
+        };
+        if (v1) {
+            v1 = true;
+        } else {
+            v1 = arg0 == @0xa;
+        };
+        assert!(v1, 0x1::error::permission_denied(11));
         let v0 = SignerCapability{account: arg0};
         (create_account_unchecked(arg0), v0)
     }
@@ -158,11 +206,10 @@ module 0x1::account {
         } else {
             create_account_unchecked(v1)
         };
-        let v4 = v2;
-        rotate_authentication_key_internal(&v4, x"0000000000000000000000000000000000000000000000000000000000000000");
+        rotate_authentication_key_internal(&v2, x"0000000000000000000000000000000000000000000000000000000000000000");
         borrow_global_mut<Account>(v1).signer_capability_offer.for = 0x1::option::some<address>(v1);
-        let v5 = SignerCapability{account: v1};
-        (v4, v5)
+        let v4 = SignerCapability{account: v1};
+        (v2, v4)
     }
     
     public fun create_resource_address(arg0: &address, arg1: vector<u8>) : address {
@@ -398,5 +445,5 @@ module 0x1::account {
         };
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

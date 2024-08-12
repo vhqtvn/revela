@@ -40,7 +40,7 @@ module 0x1337::property_map {
     public fun values(arg0: &PropertyMap) : vector<vector<u8>> {
         let v0 = 0x1::simple_map::values<0x1::string::String, PropertyValue>(&arg0.map);
         let v1 = &v0;
-        let v2 = vector[];
+        let v2 = 0x1::vector::empty<vector<u8>>();
         let v3 = 0;
         while (v3 < 0x1::vector::length<PropertyValue>(v1)) {
             0x1::vector::push_back<vector<u8>>(&mut v2, 0x1::vector::borrow<PropertyValue>(v1, v3).value);
@@ -63,8 +63,27 @@ module 0x1337::property_map {
     
     public fun create_property_value<T0: copy>(arg0: &T0) : PropertyValue {
         let v0 = 0x1::type_info::type_name<T0>();
-        let v1 = 0x1::string::utf8(b"bool");
-        if (v0 == v1 || v0 == 0x1::string::utf8(b"u8") || v0 == 0x1::string::utf8(b"u64") || v0 == 0x1::string::utf8(b"u128") || v0 == 0x1::string::utf8(b"address") || v0 == 0x1::string::utf8(b"0x1::string::String")) {
+        if (v0 == 0x1::string::utf8(b"bool") || v0 == 0x1::string::utf8(b"u8")) {
+            v2 = true;
+        } else {
+            v2 = v0 == 0x1::string::utf8(b"u64");
+        };
+        if (v2) {
+            v2 = true;
+        } else {
+            v2 = v0 == 0x1::string::utf8(b"u128");
+        };
+        if (v2) {
+            v2 = true;
+        } else {
+            v2 = v0 == 0x1::string::utf8(b"address");
+        };
+        if (v2) {
+            v2 = true;
+        } else {
+            v2 = v0 == 0x1::string::utf8(b"0x1::string::String");
+        };
+        if (v2) {
             create_property_value_raw(0x1::bcs::to_bytes<T0>(arg0), v0)
         } else {
             create_property_value_raw(0x1::bcs::to_bytes<T0>(arg0), 0x1::string::utf8(b"vector<u8>"))
@@ -189,5 +208,5 @@ module 0x1337::property_map {
         *0x1::simple_map::borrow_mut<0x1::string::String, PropertyValue>(&mut arg0.map, arg1) = arg2;
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

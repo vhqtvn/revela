@@ -22,7 +22,9 @@ module 0x1::state_storage {
     native fun get_state_storage_usage_only_at_epoch_beginning() : Usage;
     public(friend) fun initialize(arg0: &signer) {
         0x1::system_addresses::assert_aptos_framework(arg0);
-        assert!(!exists<StateStorageUsage>(@0x1), 0x1::error::already_exists(0));
+        if (exists<StateStorageUsage>(@0x1)) {
+            abort 0x1::error::already_exists(0)
+        };
         let v0 = Usage{
             items : 0, 
             bytes : 0,
@@ -47,5 +49,5 @@ module 0x1::state_storage {
         abort 0
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

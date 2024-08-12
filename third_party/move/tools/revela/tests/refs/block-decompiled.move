@@ -102,32 +102,31 @@ module 0x1::block {
     }
     
     fun emit_genesis_block_event(arg0: signer) acquires BlockResource, CommitHistory {
-        let v0 = @0x0;
-        let v1 = 0x1::vector::empty<u8>();
-        let v2 = 0x1::vector::empty<u64>();
-        let v3 = NewBlockEvent{
-            hash                        : v0, 
+        let v0 = 0x1::vector::empty<u8>();
+        let v1 = 0x1::vector::empty<u64>();
+        let v2 = NewBlockEvent{
+            hash                        : @0x0, 
             epoch                       : 0, 
             round                       : 0, 
             height                      : 0, 
-            previous_block_votes_bitvec : v1, 
+            previous_block_votes_bitvec : v0, 
             proposer                    : @0x3001, 
-            failed_proposer_indices     : v2, 
+            failed_proposer_indices     : v1, 
             time_microseconds           : 0,
         };
-        let v4 = 0x1::vector::empty<u8>();
-        let v5 = 0x1::vector::empty<u64>();
-        let v6 = NewBlock{
-            hash                        : v0, 
+        let v3 = 0x1::vector::empty<u8>();
+        let v4 = 0x1::vector::empty<u64>();
+        let v5 = NewBlock{
+            hash                        : @0x0, 
             epoch                       : 0, 
             round                       : 0, 
             height                      : 0, 
-            previous_block_votes_bitvec : v4, 
+            previous_block_votes_bitvec : v3, 
             proposer                    : @0x3001, 
-            failed_proposer_indices     : v5, 
+            failed_proposer_indices     : v4, 
             time_microseconds           : 0,
         };
-        emit_new_block_event(&arg0, &mut borrow_global_mut<BlockResource>(@0x1).new_block_events, v3, v6);
+        emit_new_block_event(&arg0, &mut borrow_global_mut<BlockResource>(@0x1).new_block_events, v2, v5);
     }
     
     fun emit_new_block_event(arg0: &signer, arg1: &mut 0x1::event::EventHandle<NewBlockEvent>, arg2: NewBlockEvent, arg3: NewBlock) acquires CommitHistory {
@@ -245,5 +244,5 @@ module 0x1::block {
         0x1::event::emit_event<UpdateEpochIntervalEvent>(&mut v0.update_epoch_interval_events, v3);
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }

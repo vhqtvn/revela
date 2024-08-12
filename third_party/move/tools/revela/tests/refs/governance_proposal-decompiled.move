@@ -11,5 +11,5 @@ module 0x1::governance_proposal {
         GovernanceProposal{dummy_field: false}
     }
     
-    // decompiled from Move bytecode v6
+    // decompiled from Move bytecode v7
 }
