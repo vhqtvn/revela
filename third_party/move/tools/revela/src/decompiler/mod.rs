@@ -171,7 +171,11 @@ impl<'a> Decompiler<'a> {
         let mut res = SourceCodeUnit::new(0);
 
         let mut buf = String::new();
-        buf.push_str("struct ");
+        if struct_env.has_variants() {
+            buf.push_str("enum ");
+        } else {
+            buf.push_str("struct ");
+        }
         buf.push_str(
             struct_env
                 .get_name()
@@ -219,29 +223,78 @@ impl<'a> Decompiler<'a> {
         buf.push_str(" {");
         res.add_line(buf);
 
-        let mut fields_block = SourceCodeUnit::new(1);
-        for field in struct_env.get_fields() {
-            let mut buf = String::new();
-            buf.push_str(
-                field
-                    .get_name()
-                    .display(struct_env.symbol_pool())
-                    .to_string()
-                    .as_str(),
-            );
-            buf.push_str(": ");
-            buf.push_str(
-                self.inline_decompile_type(&struct_env.module_env, &field.get_type(), naming)?
-                    .as_str(),
-            );
-            buf.push_str(",");
-            fields_block.add_line(buf);
-        }
+        if struct_env.has_variants() {
+            let mut variants_block = SourceCodeUnit::new(1);
+            for variant_name in struct_env.get_variants() {
+                let fields: Vec<_> = struct_env.get_fields_of_variant(variant_name).collect();
+                if fields.is_empty() {
+                    variants_block.add_line(format!(
+                        "{},",
+                        variant_name.display(struct_env.symbol_pool())
+                    ));
+                } else {
+                    let fields_str = fields
+                        .iter()
+                        .map(|field| self.decompile_struct_field(field, struct_env, naming))
+                        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+                    let mut total_len = fields_str.iter().fold(0, |acc, x| acc + x.len());
+                    // the spaces in between fields
+                    total_len += fields.len() - 1;
 
-        res.add_block(fields_block);
+                    if total_len > 80 {
+                        variants_block.add_line(format!(
+                            "{} {{",
+                            variant_name.display(struct_env.symbol_pool())
+                        ));
+                        let mut variant_block = SourceCodeUnit::new(1);
+                        for field in fields_str {
+                            variant_block.add_line(field);
+                        }
+                        variants_block.add_block(variant_block);
+                        variants_block.add_line("},".to_string());
+                    } else {
+                        variants_block.add_line(format!(
+                            "{} {{ {} }},",
+                            variant_name.display(struct_env.symbol_pool()),
+                            fields_str.join(" ")
+                        ));
+                    }
+                }
+            }
+            res.add_block(variants_block);
+        } else {
+            let mut fields_block = SourceCodeUnit::new(1);
+            for field in struct_env.get_fields() {
+                fields_block.add_line(self.decompile_struct_field(&field, struct_env, naming)?);
+            }
+            res.add_block(fields_block);
+        }
         res.add_line("}".to_string());
 
         Ok(res)
+    }
+
+    fn decompile_struct_field(
+        &self,
+        field: &move_model::model::FieldEnv,
+        struct_env: &StructEnv,
+        naming: &Naming,
+    ) -> Result<String, anyhow::Error> {
+        let mut buf = String::new();
+        buf.push_str(
+            field
+                .get_name()
+                .display(struct_env.symbol_pool())
+                .to_string()
+                .as_str(),
+        );
+        buf.push_str(": ");
+        buf.push_str(
+            self.inline_decompile_type(&struct_env.module_env, &field.get_type(), naming)?
+                .as_str(),
+        );
+        buf.push_str(",");
+        Ok(buf)
     }
 
     fn decompile_function_header(

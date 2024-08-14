@@ -8,9 +8,8 @@ use move_stackless_bytecode::{
     function_target::FunctionData,
     function_target_pipeline::{FunctionTargetProcessor, FunctionTargetsHolder},
     stackless_bytecode::{Bytecode, Operation},
-    stackless_control_flow_graph::StacklessControlFlowGraph,
 };
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 pub struct PeepHoleProcessor {
     max_loop: usize,
@@ -123,6 +122,9 @@ impl PeepHoleProcessor {
         }
     }
 
+    /**
+     * This function assumes that all the jumps are labeled, so all consecutive Assigns, Loads, Calls are within the same basic block
+     */
     fn remove_destroy_in_assignments_block(
         changed: &mut bool,
         mut block: Vec<Bytecode>,
@@ -203,7 +205,6 @@ impl PeepHoleProcessor {
     // remove all Destroy insn that destroys the destination of some instruction above it that is not used in between
     fn remove_destroy(code: Vec<Bytecode>) -> (Vec<Bytecode>, bool) {
         let mut changed = false;
-        let cfg = StacklessControlFlowGraph::new_forward(&code);
 
         // Transform code.
         let mut new_code = vec![];

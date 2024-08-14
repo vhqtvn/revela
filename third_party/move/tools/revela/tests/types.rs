@@ -12,7 +12,6 @@ mod test {
         },
         CompiledModule,
     };
-    use move_compiler::Flags;
     use revela::decompiler::{Decompiler, OptimizerSettings};
 
     fn roundtrip_test(path: &str) {

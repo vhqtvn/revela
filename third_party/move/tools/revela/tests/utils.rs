@@ -7,7 +7,7 @@ use move_binary_format::{
     binary_views::BinaryIndexedView, file_format::CompiledScript, CompiledModule,
 };
 use move_command_line_common::{address::NumericalAddress, files::FileHash};
-use move_compiler::{compiled_unit::CompiledUnit, shared::known_attributes::KnownAttribute, Flags};
+use move_compiler::compiled_unit::CompiledUnit;
 
 #[allow(dead_code)]
 fn default_testing_addresses() -> BTreeMap<String, NumericalAddress> {
@@ -237,6 +237,7 @@ pub(crate) fn assert_same_source(output: &String, output2: &String) {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn assert_same_source_ignore_assign_order(output: &String, output2: &String) {
     fn normalize_source(output: &String) -> String {
         let re = regex::Regex::new(r"v\d+").unwrap();

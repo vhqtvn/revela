@@ -37,9 +37,6 @@ mod test {
             .join("tests")
             .join("refs");
 
-        let env_decompiler_test_output_only =
-            std::env::var("DECOMPILER_TEST_OUTPUT_ONLY").ok().is_some();
-
         utils::tmp_project(
             vec![("tmp.move", source.as_str())],
             |project_root, tmp_files| {
@@ -68,7 +65,7 @@ mod test {
             },
         );
 
-        if env_decompiler_test_output_only {
+        if std::env::var("DECOMPILER_TEST_OUTPUT_ONLY").is_ok() {
             println!("{}", output);
             return Ok(());
         } else if env::var("FORCE_UPDATE_EXPECTED_OUTPUT").is_ok() {
