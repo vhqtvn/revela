@@ -31,7 +31,8 @@ impl SourceCodeUnit {
     }
 
     pub fn add_line(&mut self, line: String) {
-        self.code.push(SourceCodeItem::Line(line));
+        self.code
+            .push(SourceCodeItem::Line(line.trim_end_matches(' ').to_string()));
     }
 
     pub fn add_block(&mut self, block: SourceCodeUnit) {
@@ -44,10 +45,12 @@ impl SourceCodeUnit {
         for item in self.code.iter() {
             match item {
                 SourceCodeItem::Line(line) => {
-                    for _ in 0..indent {
-                        f.write_str("    ")?;
+                    if !line.is_empty() {
+                        for _ in 0..indent {
+                            f.write_str("    ")?;
+                        }
+                        f.write_str(line)?;
                     }
-                    f.write_str(line)?;
                     f.write_str("\n")?;
                 }
 

@@ -6,7 +6,7 @@ use std::collections::HashSet;
 
 use move_stackless_bytecode::stackless_bytecode::Constant;
 
-use crate::decompiler::evaluator::stackless::{
+use crate::decompiler::evaluator::stackless::expr_node::{
     effective_operation, ExprNodeOperation, ExprNodeRef,
 };
 
@@ -17,18 +17,28 @@ pub(crate) fn collect_referenced_variables(
     referenced_variables: &mut HashSet<usize>,
     implicit_referenced_variables: &mut HashSet<usize>,
 ) {
-    unit.exit
-        .as_ref()
-        .map(|x| x.collect_variables(referenced_variables, implicit_referenced_variables, false));
+    unit.exit.as_ref().map(|x| {
+        x.collect_variables(
+            referenced_variables,
+            implicit_referenced_variables,
+            false,
+            true,
+        )
+    });
     for item in unit.blocks.iter() {
         match item {
             DecompiledCodeItem::PossibleAssignStatement {
-                assigment_id: _,
+                assignment_id: _,
                 variable,
                 value,
                 is_decl,
             } => {
-                value.collect_variables(referenced_variables, implicit_referenced_variables, true);
+                value.collect_variables(
+                    referenced_variables,
+                    implicit_referenced_variables,
+                    true,
+                    true,
+                );
                 if !is_decl {
                     implicit_referenced_variables.insert(*variable);
                 }
@@ -41,7 +51,12 @@ pub(crate) fn collect_referenced_variables(
                 value,
                 is_decl,
             } => {
-                value.collect_variables(referenced_variables, implicit_referenced_variables, false);
+                value.collect_variables(
+                    referenced_variables,
+                    implicit_referenced_variables,
+                    false,
+                    true,
+                );
                 if !is_decl {
                     referenced_variables.insert(*variable);
                 }
@@ -51,13 +66,23 @@ pub(crate) fn collect_referenced_variables(
                 value,
                 is_decl,
             } => {
-                value.collect_variables(referenced_variables, implicit_referenced_variables, false);
+                value.collect_variables(
+                    referenced_variables,
+                    implicit_referenced_variables,
+                    false,
+                    true,
+                );
                 if !is_decl {
                     referenced_variables.extend(variables.iter());
                 }
             }
             DecompiledCodeItem::AssignStructureStatement { value, .. } => {
-                value.collect_variables(referenced_variables, implicit_referenced_variables, false);
+                value.collect_variables(
+                    referenced_variables,
+                    implicit_referenced_variables,
+                    false,
+                    true,
+                );
             }
             DecompiledCodeItem::IfElseStatement {
                 result_variables,
@@ -80,6 +105,7 @@ pub(crate) fn collect_referenced_variables(
                     referenced_variables,
                     implicit_referenced_variables,
                     false,
+                    true,
                 );
                 referenced_variables.extend(result_variables.iter());
             }
@@ -90,13 +116,23 @@ pub(crate) fn collect_referenced_variables(
                     implicit_referenced_variables,
                 );
                 cond.as_ref().map(|x| {
-                    x.collect_variables(referenced_variables, implicit_referenced_variables, false)
+                    x.collect_variables(
+                        referenced_variables,
+                        implicit_referenced_variables,
+                        false,
+                        true,
+                    )
                 });
             }
             DecompiledCodeItem::Statement { expr: e }
             | DecompiledCodeItem::ReturnStatement(e)
             | DecompiledCodeItem::AbortStatement(e) => {
-                e.collect_variables(referenced_variables, implicit_referenced_variables, false);
+                e.collect_variables(
+                    referenced_variables,
+                    implicit_referenced_variables,
+                    false,
+                    true,
+                );
             }
             DecompiledCodeItem::BreakStatement
             | DecompiledCodeItem::ContinueStatement
@@ -112,7 +148,7 @@ pub(crate) fn collect_live_variables(
 ) {
     unit.exit
         .as_ref()
-        .map(|x| x.collect_variables(live_variables, implicit_variables, false));
+        .map(|x| x.collect_variables(live_variables, implicit_variables, false, true));
     unit.result_variables.iter().for_each(|x| {
         live_variables.insert(*x);
         ()
@@ -126,25 +162,25 @@ pub(crate) fn collect_live_variables(
                 variables, value, ..
             } => {
                 live_variables.extend(variables.iter());
-                value.collect_variables(live_variables, implicit_variables, false);
+                value.collect_variables(live_variables, implicit_variables, false, true);
             }
             DecompiledCodeItem::AssignStructureStatement {
                 variables, value, ..
             } => {
                 live_variables.extend(variables.iter().map(|x| x.1));
-                value.collect_variables(live_variables, implicit_variables, false);
+                value.collect_variables(live_variables, implicit_variables, false, true);
             }
             DecompiledCodeItem::PossibleAssignStatement {
                 variable, value, ..
             } => {
                 implicit_variables.insert(*variable);
-                value.collect_variables(live_variables, implicit_variables, true);
+                value.collect_variables(live_variables, implicit_variables, true, true);
             }
             DecompiledCodeItem::AssignStatement {
                 variable, value, ..
             } => {
                 live_variables.insert(*variable);
-                value.collect_variables(live_variables, implicit_variables, false);
+                value.collect_variables(live_variables, implicit_variables, false, true);
             }
             DecompiledCodeItem::IfElseStatement {
                 result_variables,
@@ -154,24 +190,24 @@ pub(crate) fn collect_live_variables(
                 ..
             } => {
                 live_variables.extend(result_variables.iter());
-                cond.collect_variables(live_variables, implicit_variables, false);
+                cond.collect_variables(live_variables, implicit_variables, false, true);
                 collect_live_variables(if_unit, live_variables, implicit_variables);
                 collect_live_variables(else_unit, live_variables, implicit_variables);
             }
             DecompiledCodeItem::WhileStatement { body, cond } => {
                 if let Some(cond) = cond {
-                    cond.collect_variables(live_variables, implicit_variables, false);
+                    cond.collect_variables(live_variables, implicit_variables, false, true);
                 }
                 collect_live_variables(body, live_variables, implicit_variables);
             }
             DecompiledCodeItem::ReturnStatement(e) | DecompiledCodeItem::AbortStatement(e) => {
-                e.collect_variables(live_variables, implicit_variables, false);
+                e.collect_variables(live_variables, implicit_variables, false, true);
             }
             DecompiledCodeItem::BreakStatement
             | DecompiledCodeItem::ContinueStatement
             | DecompiledCodeItem::CommentStatement(_) => {}
             DecompiledCodeItem::Statement { expr } => {
-                expr.collect_variables(live_variables, implicit_variables, false);
+                expr.collect_variables(live_variables, implicit_variables, false, true);
             }
         }
     }

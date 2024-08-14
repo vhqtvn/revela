@@ -2,11 +2,11 @@ module 0x12::TestLiveVars {
     struct R has copy, drop {
         x: u64,
     }
-    
+
     fun test1(arg0: &R) : u64 {
         arg0.x
     }
-    
+
     fun test2(arg0: bool) : u64 {
         let v0 = R{x: 3};
         let v1 = R{x: 4};
@@ -16,7 +16,7 @@ module 0x12::TestLiveVars {
         };
         test1(v2)
     }
-    
+
     fun test3(arg0: u64, arg1: &R) : u64 {
         let v0 = R{x: 3};
         let v1 = R{x: 4};
@@ -30,6 +30,6 @@ module 0x12::TestLiveVars {
         };
         test1(arg1)
     }
-    
+
     // decompiled from Move bytecode v7
 }

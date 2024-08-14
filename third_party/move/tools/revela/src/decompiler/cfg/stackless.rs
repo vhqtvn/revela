@@ -10,36 +10,52 @@ use super::{
     algo::{
         self,
         blocks_stackless::{AnnotatedBytecodeData, StacklessBlockContent},
+        graph::{DominatorNodes, Graph},
+        loop_reconstruction::DominationMeta,
+        topo::TopoSortedBlocks,
     },
     datastructs::*,
     metadata::{WithMetadata, WithMetadataExt},
+    stackless_variants_test_simplifier::StacklessVariantsTestSimplifier,
 };
 
 pub fn decompile(
     insts: &[Bytecode],
-    initial_variables: &HashSet<usize>,
+    _initial_variables: &HashSet<usize>,
 ) -> Result<WithMetadata<CodeUnitBlock<usize, StacklessBlockContent>>, anyhow::Error> {
-    let blocks: Vec<BasicBlock<usize, StacklessBlockContent>> =
+    let variant_test_simplifier = StacklessVariantsTestSimplifier::for_bytecodes(insts);
+    let insts = variant_test_simplifier.simplified_bytecodes();
+    let mut blocks: Vec<BasicBlock<usize, StacklessBlockContent>> =
         algo::blocks_stackless::split_basic_blocks_stackless_bytecode(insts)
             .map_err(|e| anyhow::anyhow!("Unable to split into basic blocks: {}", e))?;
-    let mut blocks = algo::topo::topo_sort(blocks, true)?;
+    variant_test_simplifier.annotate_variants(&mut blocks);
+    let mut blocks = blocks
+        .iter()
+        .map(|x| x.clone().with_metadata())
+        .collect::<Vec<_>>();
+    annotate_dummy_dispatch_blocks(&mut blocks)?;
+
+    let mut blocks = algo::topo::topo_sort(blocks)?;
     rewrite_labels(&mut blocks)?;
 
-    cleanup_tail_jumps_for_terminated_blocks(&mut blocks)?;
-    cleanup_dummy_dispatch_blocks(&mut blocks)?;
+    remove_post_terminator_jumps_bytecodes(&mut blocks)?;
+
+    annotate_articulation(&mut blocks);
+    algo::loop_reconstruction::loop_reconstruction(&mut blocks, 0)?;
+
+    create_label_jump_for_break_continue_blocks(&mut blocks);
+
+    let mut blocks = algo::topo::topo_sort(blocks.clone_flatten())?;
     rewrite_labels(&mut blocks)?;
 
-    algo::loop_reconstruction::loop_reconstruction(&mut blocks, initial_variables)?;
-
-    let mut blocks = algo::topo::topo_sort(blocks, false)?;
-    rewrite_labels(&mut blocks)?;
+    reannotate_loop_terminations(&mut blocks, &HashSet::new())?;
 
     annotate_jumps(&mut blocks)?;
     annotate_short_circuit_jumps(&mut blocks)?;
 
-    let blocks_cloned = blocks.clone();
-    let mut program = build_program(&blocks_cloned, blocks.iter(), false)?;
-    insert_terminated_blocks_if_needed(&blocks, &mut program, None)?;
+    annotate_articulation(&mut blocks);
+
+    let mut program = build_program(blocks.clone_flatten().iter(), 0, false)?;
 
     cleanup_jumps(
         &mut program.inner_mut().blocks,
@@ -59,64 +75,96 @@ pub fn decompile(
     Ok(program)
 }
 
-fn check_wrong_jump_program(
-    program: &WithMetadata<CodeUnitBlock<usize, StacklessBlockContent>>,
-    next_block: Option<usize>,
-) -> Option<usize> {
-    if program.blocks.len() == 1 {
-        if let HyperBlock::ConnectedBlocks(blocks) = program.blocks[0].inner() {
-            if blocks.len() == 1 {
-                if let Terminator::Branch { target } = blocks[0].next {
-                    if next_block.is_some() && next_block.unwrap() != target {
-                        return Some(target);
+fn reannotate_loop_terminations(
+    block: &mut TopoSortedBlocks<StacklessBlockContent>,
+    parent_exits: &HashSet<usize>,
+) -> Result<(), anyhow::Error> {
+    let entry = block.entry;
+    for tsb in block.blocks.iter_mut() {
+        match tsb {
+            algo::topo::TopoSortedBlockItem::SubBlock(sub_block) => {
+                let mut parent_exits = parent_exits.clone();
+                if let Some(e) = sub_block.exit {
+                    parent_exits.insert(e);
+                }
+                reannotate_loop_terminations(sub_block, &parent_exits)?;
+            }
+            algo::topo::TopoSortedBlockItem::Blocks(blocks) => {
+                for b in blocks.iter_mut() {
+                    if let Terminator::Continue { target } = b.next {
+                        if target == entry {
+                            continue;
+                        }
+                        if parent_exits.contains(&target) {
+                            b.next = Terminator::Break { target };
+                        }
                     }
                 }
             }
         }
     }
-    return None;
+
+    Ok(())
 }
 
-fn insert_terminated_blocks_if_needed(
-    global_blocks: &[BasicBlock<usize, StacklessBlockContent>],
-    program: &mut WithMetadata<CodeUnitBlock<usize, StacklessBlockContent>>,
-    next_block: Option<usize>,
-) -> Result<Option<usize>, anyhow::Error> {
-    if let Some(target) = check_wrong_jump_program(program, next_block) {
-        if let Some(t) = build_terminated_program(&global_blocks, target) {
-            *program = t.clone();
-            return Ok(None);
+fn annotate_articulation<'s>(blocks: &mut TopoSortedBlocks<StacklessBlockContent>) {
+    let mut graph = Graph::new();
+    blocks.for_each_block(|block| {
+        let block = block.inner();
+        graph.ensure_node(block.idx);
+        for next in block.next.next_blocks() {
+            graph.add_edge(block.idx, *next);
         }
-    }
-    let p = program.inner_mut();
+    });
 
-    let mut next_block = next_block;
+    let dominator_points = DominatorNodes::for_graph(&graph, 0);
 
-    for block in p.blocks.iter_mut().rev() {
-        match block.inner_mut() {
-            HyperBlock::ConnectedBlocks(blocks) => {
-                if let Some(blk) = blocks.first() {
-                    next_block = Some(blk.idx);
-                }
-            }
+    blocks.for_each_block_mut(|block| {
+        block
+            .meta_mut()
+            .get_or_default::<DominationMeta>()
+            .is_domination = dominator_points.contains(&block.idx);
+    });
+}
 
-            HyperBlock::IfElseBlocks { if_unit, else_unit } => {
-                let _last_else =
-                    insert_terminated_blocks_if_needed(global_blocks, else_unit, next_block)?;
-                let _last_if =
-                    insert_terminated_blocks_if_needed(global_blocks, if_unit, next_block)?;
-                next_block = None;
-            }
-
-            HyperBlock::WhileBlocks { inner, outer, .. } => {
-                insert_terminated_blocks_if_needed(global_blocks, outer, next_block)?;
-                insert_terminated_blocks_if_needed(global_blocks, inner, None)?;
-                next_block = None;
-            }
+fn create_label_jump_for_break_continue_blocks(
+    blocks: &mut TopoSortedBlocks<StacklessBlockContent>,
+) {
+    blocks.for_each_block_mut(|block| {
+        if !block.content.code.is_empty() {
+            return;
         }
-    }
-
-    Ok(next_block)
+        let target =
+            if let Terminator::Break { target } | Terminator::Continue { target } = block.next {
+                target
+            } else {
+                return;
+            };
+        let block_idx = block.idx;
+        let block_next = block.next.clone();
+        block.content.code.push(
+            AnnotatedBytecodeData {
+                original_offset: usize::MAX,
+                bytecode: Bytecode::Label(AttrId::new(u16::MAX as usize), Label::new(block_idx)),
+                removed: false,
+                jump_type: JumpType::Unknown,
+            }
+            .with_metadata(),
+        );
+        block.content.code.push(
+            AnnotatedBytecodeData {
+                original_offset: usize::MAX,
+                bytecode: Bytecode::Jump(AttrId::new(u16::MAX as usize), Label::new(target)),
+                removed: false,
+                jump_type: match &block_next {
+                    Terminator::Break { .. } => JumpType::Break,
+                    Terminator::Continue { .. } => JumpType::Continue,
+                    _ => unreachable!(),
+                },
+            }
+            .with_metadata(),
+        );
+    });
 }
 
 #[allow(dead_code)]
@@ -128,10 +176,12 @@ fn to_inner_mut<T: Clone>(x: &mut WithMetadata<T>) -> &mut T {
     x.inner_mut()
 }
 
-fn annotate_jumps(
-    blocks: &mut [BasicBlock<usize, StacklessBlockContent>],
+fn annotate_jumps<'s>(
+    blocks: &mut TopoSortedBlocks<StacklessBlockContent>,
 ) -> Result<(), anyhow::Error> {
-    for block in blocks {
+    blocks.for_each_block_mut_check_error(|block| {
+        let block = block.inner_mut();
+
         match block.next {
             Terminator::While { .. } => {
                 if !annotate_final_jump(block, JumpType::While, true)? {
@@ -149,10 +199,10 @@ fn annotate_jumps(
             | Terminator::Abort
             | Terminator::IfElse { .. }
             | Terminator::Branch { .. } => {}
-        }
-    }
+        };
 
-    Ok(())
+        Ok(())
+    })
 }
 
 fn annotate_final_jump(
@@ -175,49 +225,48 @@ fn annotate_final_jump(
     Ok(false)
 }
 
-fn annotate_short_circuit_jumps(
-    blocks: &mut [BasicBlock<usize, StacklessBlockContent>],
+fn annotate_short_circuit_jumps<'s>(
+    blocks: &mut TopoSortedBlocks<StacklessBlockContent>,
 ) -> Result<(), anyhow::Error> {
-    let is_return_block = blocks
-        .iter()
-        .map(|block| {
-            if matches!(block.next, Terminator::Ret | Terminator::Abort)
-                && block.content.code.len() == 2
-            {
-                if let (Bytecode::Label(..), Bytecode::Ret(..) | Bytecode::Abort(..)) = (
-                    &block.content.code[0].bytecode,
-                    &block.content.code[1].bytecode,
-                ) {
-                    Some(block.content.code[1].clone())
-                } else {
-                    None
-                }
+    let mut is_return_block = Vec::new();
+    blocks.for_each_block(|block| {
+        let item = if matches!(block.next, Terminator::Ret | Terminator::Abort)
+            && block.content.code.len() == 2
+        {
+            if let (Bytecode::Label(..), Bytecode::Ret(..) | Bytecode::Abort(..)) = (
+                &block.content.code[0].bytecode,
+                &block.content.code[1].bytecode,
+            ) {
+                Some(block.content.code[1].clone())
             } else {
                 None
             }
-        })
-        .collect::<Vec<_>>();
+        } else {
+            None
+        };
 
-    let mut immediate_jump_target = blocks
-        .iter()
-        .map(|block| {
-            if block.content.code.len() == 2 {
-                if let (Terminator::Branch { target }, Bytecode::Label(..), Bytecode::Jump(..)) = (
-                    &block.next,
-                    &block.content.code[0].bytecode,
-                    &block.content.code[1].bytecode,
-                ) {
-                    Some(*target)
-                } else {
-                    None
-                }
+        is_return_block.push(item);
+    });
+
+    let mut immediate_jump_target = Vec::new();
+    blocks.for_each_block(|block| {
+        let item = if block.content.code.len() == 2 {
+            if let (Terminator::Branch { target }, Bytecode::Label(..), Bytecode::Jump(..)) = (
+                &block.next,
+                &block.content.code[0].bytecode,
+                &block.content.code[1].bytecode,
+            ) {
+                Some(*target)
             } else {
                 None
             }
-        })
-        .collect::<Vec<_>>();
+        } else {
+            None
+        };
+        immediate_jump_target.push(item);
+    });
 
-    let mut visited = vec![0; blocks.len()];
+    let mut visited = vec![0; is_return_block.len()];
     let mut visit_n = 0;
     for i in 0..immediate_jump_target.len() {
         if visited[i] > 0 {
@@ -266,40 +315,45 @@ fn annotate_short_circuit_jumps(
         }
     }
 
-    for i in 0..blocks.len() {
-        if let Terminator::Branch { target } = blocks[i].next {
+    let mut block_nexts = Vec::new();
+    blocks.for_each_block(|block| {
+        block_nexts.push(block.next.clone());
+    });
+
+    blocks.for_each_block_mut(|block| {
+        if let Terminator::Branch { target } = block.next {
             let final_target = immediate_jump_target[target].unwrap_or(target);
 
             if final_target == usize::MAX {
                 // it's a cycle, do nothing
-                continue;
+                return;
             }
 
             if let Some(op) = &is_return_block[final_target] {
-                if let Some(last_op) = blocks[i].content.code.last() {
+                if let Some(last_op) = block.content.code.last() {
                     if matches!(last_op.bytecode, Bytecode::Jump(..)) {
-                        blocks[i].short_circuit_terminator = Some((
+                        block.short_circuit_terminator = Some((
                             StacklessBlockContent {
                                 code: vec![op.clone()],
                             },
-                            blocks[final_target].next.clone(),
+                            block_nexts[final_target].clone(),
                         ));
                     }
                 }
             }
         }
-    }
+    });
 
     Ok(())
 }
 
 /// ensure each block has a unique label, and rewrite all labels to block index
-fn rewrite_labels(
-    blocks: &mut [BasicBlock<usize, StacklessBlockContent>],
+fn rewrite_labels<'s>(
+    blocks: &mut TopoSortedBlocks<StacklessBlockContent>,
 ) -> Result<(), anyhow::Error> {
     let mut live_labels = BTreeSet::new();
 
-    for block in blocks.iter() {
+    blocks.for_each_block(|block| {
         for bytecode in &block.content.code {
             match bytecode.bytecode {
                 Bytecode::Branch(_, a, b, _) => {
@@ -314,9 +368,9 @@ fn rewrite_labels(
                 _ => {}
             }
         }
-    }
+    });
 
-    for block in blocks.iter_mut() {
+    blocks.for_each_block_mut(|block| {
         for bytecode in &mut block.content.code {
             if let Bytecode::Label(.., lbl) = bytecode.bytecode {
                 if !live_labels.contains(&lbl) {
@@ -324,14 +378,18 @@ fn rewrite_labels(
                 }
             }
         }
-    }
+    });
 
     let mut label2block: BTreeMap<Label, usize> = BTreeMap::new();
     let mut block2label: BTreeMap<usize, Label> = BTreeMap::new();
 
     let mut label_remap = BTreeMap::new();
 
-    for (idx, block) in blocks.iter().enumerate() {
+    let mut idx: usize = 0;
+    idx = idx.wrapping_sub(1);
+    blocks.for_each_block_mut_check_error(|block| {
+        idx = idx.wrapping_add(1);
+
         if block.idx != idx {
             return Err(anyhow::anyhow!(
                 "Block {} is not in the right order, expected {}",
@@ -366,7 +424,9 @@ fn rewrite_labels(
                 }
             }
         }
-    }
+
+        Ok(())
+    })?;
 
     fn update(label2block: &BTreeMap<Label, usize>, label: &mut Label) {
         if let Some(idx) = label2block.get(label) {
@@ -376,7 +436,7 @@ fn rewrite_labels(
         }
     }
 
-    for block in blocks.iter_mut() {
+    blocks.for_each_block_mut(|block| {
         for bytecode in block.content.code.iter_mut() {
             if bytecode.removed {
                 if let Bytecode::Label(idx, _) = bytecode.bytecode {
@@ -404,7 +464,7 @@ fn rewrite_labels(
                 }
             }
         }
-    }
+    });
 
     Ok(())
 }
@@ -420,9 +480,8 @@ fn debug_dump_program(
     for block in program.blocks.iter().map(to_inner) {
         match block {
             HyperBlock::ConnectedBlocks(blocks) => {
-                println!("{}//Connected block", prefix);
-                for block in blocks.iter().map(to_inner) {
-                    println!("{}Block {} {:?}", prefix, block.idx, block.next);
+                for (i, block) in blocks.iter().map(to_inner).enumerate() {
+                    println!("{}{}.Block {} next={:?} implicit_terminator={:?} is_dummy_dispatch_block={:?}", prefix, i, block.idx, block.next, block.implicit_terminator, block.is_dummy_dispatch_block);
                     if show_bytecode {
                         block.content.code.iter().for_each(|bytecode| {
                             println!(
@@ -432,7 +491,6 @@ fn debug_dump_program(
                         });
                     }
                 }
-                println!("{}//End connected block", prefix);
             }
 
             HyperBlock::IfElseBlocks { if_unit, else_unit } => {
@@ -464,35 +522,98 @@ fn debug_dump_program(
 
 #[cfg(debug_assertions)]
 #[allow(dead_code)]
-fn debug_dump_blocks(blocks: &[BasicBlock<usize, StacklessBlockContent>]) {
-    for block in blocks {
-        println!(
-            "Block {} {:?} unconditional_loop_entry={:?}",
-            block.idx, block.next, block.unconditional_loop_entry
-        );
-
-        block.content.code.iter().for_each(|bytecode| {
-            println!("  {:?}", bytecode.bytecode);
-        });
-    }
+fn debug_dump_blocks_graph(blocks: &TopoSortedBlocks<StacklessBlockContent>) {
+    println!("digraph {{");
+    let mut names = Vec::new();
+    blocks.for_each_block(|block| {
+        let name = match &block.next {
+            Terminator::Normal => {
+                format!("{}", block.idx)
+            }
+            Terminator::Ret => {
+                format!("R:{}", block.idx)
+            }
+            Terminator::Abort => {
+                format!("A:{}", block.idx)
+            }
+            Terminator::IfElse { .. } => {
+                format!("{}", block.idx)
+            }
+            Terminator::Branch { .. } => {
+                format!("{}", block.idx)
+            }
+            Terminator::While { .. } => {
+                format!("{}", block.idx)
+            }
+            Terminator::Break { .. } => {
+                format!("b:{}", block.idx)
+            }
+            Terminator::Continue { .. } => {
+                format!("c:{}", block.idx)
+            }
+        };
+        names.push(name);
+    });
+    blocks.for_each_block(|block| {
+        for nxt in block.next.next_blocks().iter() {
+            println!("  \"{}\" -> \"{}\"", names[block.idx], names[**nxt]);
+        }
+    });
+    println!("}}");
 }
 
 #[cfg(debug_assertions)]
 #[allow(dead_code)]
-fn debug_dump_blocks_graph(blocks: &[BasicBlock<usize, StacklessBlockContent>]) {
-    println!("digraph G {{");
-    for block in blocks {
-        for nxt in block.next.next_blocks() {
-            println!("{} -> {}", block.idx, nxt);
-        }
-    }
-    println!("}}");
+fn debug_dump_blocks(blocks: &TopoSortedBlocks<StacklessBlockContent>, show_bytecode: bool) {
+    println!("====== BLOCKS ======");
+    debug_dump_blocks_with_level(blocks, show_bytecode, 0);
+    println!("====== END BLOCKS ======");
 }
 
-fn cleanup_tail_jumps_for_terminated_blocks(
-    blocks: &mut [BasicBlock<usize, StacklessBlockContent>],
+#[cfg(debug_assertions)]
+#[allow(dead_code)]
+fn debug_dump_blocks_with_level(
+    blocks: &TopoSortedBlocks<StacklessBlockContent>,
+    show_bytecode: bool,
+    level: usize,
+) {
+    println!(
+        "{}// Block: entry={:?} exit={:?}",
+        "  ".repeat(level),
+        blocks.entry,
+        blocks.exit
+    );
+    for block in blocks.blocks.iter() {
+        match block {
+            algo::topo::TopoSortedBlockItem::SubBlock(blocks) => {
+                debug_dump_blocks_with_level(blocks, show_bytecode, level + 1);
+            }
+            algo::topo::TopoSortedBlockItem::Blocks(blocks) => {
+                for block in blocks.iter() {
+                    let prefix = "  ".repeat(level);
+                    println!(
+                        "{}Block {} {:?} unconditional_loop_entry={:?}",
+                        prefix, block.idx, block.next, block.unconditional_loop_entry
+                    );
+
+                    if show_bytecode {
+                        block.content.code.iter().for_each(|bytecode| {
+                            println!(
+                                "{}  {:?} removed={:?} jump_type={:?}",
+                                prefix, bytecode.bytecode, bytecode.removed, bytecode.jump_type
+                            );
+                        });
+                    }
+                }
+            }
+        };
+    }
+}
+
+fn remove_post_terminator_jumps_bytecodes(
+    blocks: &mut TopoSortedBlocks<StacklessBlockContent>,
 ) -> Result<(), anyhow::Error> {
-    for block in blocks.iter_mut() {
+    blocks.for_each_block_mut_check_error(|block| {
         if matches!(block.next, Terminator::Ret | Terminator::Abort) {
             while let Some(&mut AnnotatedBytecodeData {
                 bytecode: Bytecode::Jump(..),
@@ -513,10 +634,9 @@ fn cleanup_tail_jumps_for_terminated_blocks(
                     "Terminated block not end with Ret or Abort"
                 ));
             }
-        }
-    }
-
-    Ok(())
+        };
+        Ok(())
+    })
 }
 
 /// Remove continue statements in the end of a loop
@@ -618,8 +738,9 @@ fn is_empty_basic_block(b: &WithMetadata<BasicBlock<usize, StacklessBlockContent
 }
 
 /// Remove blocks that has only labels and a final jump, merging the labels into the target block
+#[allow(dead_code)]
 fn cleanup_dummy_dispatch_blocks(
-    blocks: &mut Vec<BasicBlock<usize, StacklessBlockContent>>,
+    blocks: &mut Vec<WithMetadata<BasicBlock<usize, StacklessBlockContent>>>,
 ) -> Result<(), anyhow::Error> {
     fn check_is_dummy_dispatch_block(
         block: &BasicBlock<usize, StacklessBlockContent>,
@@ -643,8 +764,8 @@ fn cleanup_dummy_dispatch_blocks(
                 Bytecode::Call(_, _, oper, _, _) => {
                     use move_stackless_bytecode::stackless_bytecode::Operation;
                     match oper {
-                        // currently only Drop|Release operations have no affect to the control flow
-                        Operation::Drop | Operation::Release => {}
+                        // currently only Drop operations have no affect to the control flow
+                        Operation::Drop => {}
                         _ => return None,
                     }
                 }
@@ -657,8 +778,22 @@ fn cleanup_dummy_dispatch_blocks(
     }
 
     while let Some((from_block, to_block)) = {
+        let mut conditional_targets = HashSet::new();
+        for i in 0..blocks.len() {
+            if let Terminator::IfElse {
+                if_block,
+                else_block,
+            } = &blocks[i].next
+            {
+                conditional_targets.insert(if_block.target);
+                conditional_targets.insert(else_block.target);
+            }
+        }
         let mut next_merge = None;
         for i in 0..blocks.len() {
+            if conditional_targets.contains(&i) {
+                continue;
+            }
             if let Some(_) = check_is_dummy_dispatch_block(&blocks[i]) {
                 if let Terminator::Branch { target } = blocks[i].next {
                     if target != i {
@@ -693,7 +828,7 @@ fn cleanup_dummy_dispatch_blocks(
 
         // update the jump target
         for block in blocks.iter_mut() {
-            match block.next {
+            match block.next.clone() {
                 Terminator::Branch { mut target } => {
                     if target == from_block {
                         target = to_block;
@@ -705,11 +840,11 @@ fn cleanup_dummy_dispatch_blocks(
                     mut if_block,
                     mut else_block,
                 } => {
-                    if if_block == from_block {
-                        if_block = to_block;
+                    if if_block.target == from_block {
+                        if_block.target = to_block;
                     }
-                    if else_block == from_block {
-                        else_block = to_block;
+                    if else_block.target == from_block {
+                        else_block.target = to_block;
                     }
                     block.next = Terminator::IfElse {
                         if_block,
@@ -728,6 +863,48 @@ fn cleanup_dummy_dispatch_blocks(
         }
 
         algo::blocks::remove_block(blocks, from_block);
+    }
+
+    Ok(())
+}
+
+fn annotate_dummy_dispatch_blocks(
+    blocks: &mut Vec<WithMetadata<BasicBlock<usize, StacklessBlockContent>>>,
+) -> Result<(), anyhow::Error> {
+    fn check_is_dummy_dispatch_block(block: &BasicBlock<usize, StacklessBlockContent>) -> bool {
+        let mut iter = block.content.code.iter().peekable();
+
+        while let Some(bytecode) = iter.next() {
+            match &bytecode.bytecode {
+                Bytecode::Label(..) => {}
+                Bytecode::Jump(..) => {
+                    // only the last jump is effective
+                    if iter.peek().is_none() {
+                        return true;
+                    }
+                    // or it isnt be a dummy one
+                    return false;
+                }
+                Bytecode::Call(_, _, oper, _, _) => {
+                    use move_stackless_bytecode::stackless_bytecode::Operation;
+                    match oper {
+                        // currently only Drop operation affects the control flow
+                        Operation::Drop => {}
+                        _ => return false,
+                    }
+                }
+                _ => {
+                    return false;
+                }
+            }
+        }
+        false
+    }
+
+    for block in blocks.iter_mut() {
+        if check_is_dummy_dispatch_block(block.inner()) {
+            block.inner_mut().is_dummy_dispatch_block = true;
+        }
     }
 
     Ok(())
@@ -766,16 +943,13 @@ fn trim_else(
                 let (rewrite, add_continue) = {
                     let mut r = false;
                     let mut c = false;
-                    // this pattern is for a non-reconstructable while(complex_condition){} loop
+                    // ignore last if (...) {...} else { break; } in loop
+                    // also ignore last if (...) {...} else { /* empty */ }
                     if current_is_last_block_in_loop
-                        && matches!(
-                            if_unit.inner().terminator(),
-                            Some(&Terminator::Continue { .. })
-                        )
-                        && matches!(
+                        && (matches!(
                             else_unit.inner().terminator(),
                             Some(&Terminator::Break { .. })
-                        )
+                        ) || is_continue_only_block(else_unit.inner()))
                     {
                         // do nothing
                     } else if if_unit.inner().is_terminated() {
@@ -847,6 +1021,25 @@ fn trim_else(
         }
     }
     program.inner_mut().blocks = new_blocks;
+}
+
+fn is_continue_only_block(inner: &CodeUnitBlock<usize, StacklessBlockContent>) -> bool {
+    let mut cnt = 0;
+    for content in inner.content_iter() {
+        for bytecode in &content.content.code {
+            if bytecode.jump_type == JumpType::Continue
+                && matches!(bytecode.bytecode, Bytecode::Jump(..))
+            {
+                cnt = cnt + 1;
+                if cnt > 1 {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+    }
+    cnt <= 1
 }
 
 fn collect_starting_labels(content: &StacklessBlockContent, labels: &mut BTreeSet<Label>) -> bool {
@@ -1058,8 +1251,8 @@ fn cleanup_tail_jump_in_basic_block_for_labels(
 }
 
 fn build_program(
-    global_blocks: &[BasicBlock<usize, StacklessBlockContent>],
-    blocks: core::slice::Iter<BasicBlock<usize, StacklessBlockContent>>,
+    blocks: core::slice::Iter<WithMetadata<BasicBlock<usize, StacklessBlockContent>>>,
+    level: usize,
     skip_first_unconditional_loop: bool,
 ) -> Result<WithMetadata<CodeUnitBlock<usize, StacklessBlockContent>>, anyhow::Error> {
     let mut p = CodeUnitBlock {
@@ -1092,17 +1285,11 @@ fn build_program(
             ) {
                 flush(&mut chaining_blocks, &mut p);
                 iter = backup_iter.clone();
-                let paths = follow_loop_boundaries(
-                    global_blocks,
-                    &mut iter,
-                    node.idx,
-                    node.idx,
-                    *exit,
-                    true,
-                )?;
+                let paths =
+                    follow_loop_boundaries(&mut iter, level + 1, node.idx, node.idx, *exit, true)?;
                 p.inner_mut().blocks.push(paths);
             } else {
-                match node.next {
+                match node.next.clone() {
                     Terminator::Normal => {
                         return Err(anyhow::anyhow!(
                             "There must be no Normal node at this stage"
@@ -1110,16 +1297,16 @@ fn build_program(
                     }
 
                     Terminator::Branch { .. } => {
-                        chaining_blocks.push(node.clone().with_metadata());
+                        chaining_blocks.push(node.inner().clone().with_metadata());
                     }
 
                     Terminator::Break { .. } | Terminator::Continue { .. } => {
-                        chaining_blocks.push(node.clone().with_metadata());
+                        chaining_blocks.push(node.inner().clone().with_metadata());
                         flush(&mut chaining_blocks, &mut p);
                     }
 
                     Terminator::Ret | Terminator::Abort => {
-                        chaining_blocks.push(node.clone().with_metadata());
+                        chaining_blocks.push(node.inner().clone().with_metadata());
                         flush(&mut chaining_blocks, &mut p);
                         p.inner_mut().terminate = true;
                     }
@@ -1128,14 +1315,10 @@ fn build_program(
                         if_block,
                         else_block,
                     } => {
-                        chaining_blocks.push(node.clone().with_metadata());
+                        chaining_blocks.push(node.inner().clone().with_metadata());
                         flush(&mut chaining_blocks, &mut p);
-                        let paths = follow_ifelse_boundaries(
-                            global_blocks,
-                            &mut iter,
-                            if_block,
-                            else_block,
-                        )?;
+                        let paths =
+                            follow_ifelse_boundaries(&mut iter, level + 1, if_block, else_block)?;
                         p.inner_mut().blocks.push(paths);
                     }
 
@@ -1144,11 +1327,11 @@ fn build_program(
                         outer_block,
                         ..
                     } => {
-                        chaining_blocks.push(node.clone().with_metadata());
+                        chaining_blocks.push(node.inner().clone().with_metadata());
                         flush(&mut chaining_blocks, &mut p);
                         let paths = follow_loop_boundaries(
-                            global_blocks,
                             &mut iter,
+                            level + 1,
                             node.idx,
                             inner_block,
                             outer_block,
@@ -1171,8 +1354,8 @@ fn build_program(
 }
 
 fn follow_loop_boundaries(
-    global_blocks: &[BasicBlock<usize, StacklessBlockContent>],
-    iter: &mut core::slice::Iter<BasicBlock<usize, StacklessBlockContent>>,
+    iter: &mut core::slice::Iter<WithMetadata<BasicBlock<usize, StacklessBlockContent>>>,
+    level: usize,
     start: usize,
     inner: usize,
     outer: usize,
@@ -1200,7 +1383,14 @@ fn follow_loop_boundaries(
                         inner_paths.insert(target);
                     };
                 } else {
-                    inner_paths.extend(next_block.next.next_blocks().iter().copied());
+                    inner_paths.extend(
+                        next_block
+                            .next
+                            .next_blocks()
+                            .iter()
+                            .filter(|&&&x| x != outer)
+                            .copied(),
+                    );
                 }
             }
             (_, Some(_)) => {
@@ -1211,8 +1401,8 @@ fn follow_loop_boundaries(
         }
     }
 
-    let inner_program = build_program(global_blocks, inner_nodes.iter(), unconditional)?;
-    let outer_program = build_program(global_blocks, outer_nodes.iter(), false)?;
+    let inner_program = build_program(inner_nodes.iter(), level + 1, unconditional)?;
+    let outer_program = build_program(outer_nodes.iter(), level + 1, false)?;
 
     Ok(HyperBlock::WhileBlocks {
         inner: Box::new(inner_program),
@@ -1225,11 +1415,13 @@ fn follow_loop_boundaries(
 }
 
 fn follow_ifelse_boundaries(
-    global_blocks: &[BasicBlock<usize, StacklessBlockContent>],
-    iter: &mut core::slice::Iter<BasicBlock<usize, StacklessBlockContent>>,
-    t: usize,
-    f: usize,
+    iter: &mut core::slice::Iter<WithMetadata<BasicBlock<usize, StacklessBlockContent>>>,
+    level: usize,
+    bt_t: BranchTarget<usize>,
+    bt_f: BranchTarget<usize>,
 ) -> Result<WithMetadata<HyperBlock<usize, StacklessBlockContent>>, anyhow::Error> {
+    let t = bt_t.target;
+    let f = bt_f.target;
     let mut true_nodes = Vec::new();
     let mut false_nodes = Vec::new();
 
@@ -1238,11 +1430,32 @@ fn follow_ifelse_boundaries(
 
     let mut first_branch = None;
 
+    let mut false_is_articulation = false;
+
     loop {
         let backup_iter = iter.clone();
         if let Some(n) = iter.next() {
             let in_true_path = true_paths.get(&n.idx).is_some();
             let in_false_path = false_paths.get(&n.idx).is_some();
+
+            if in_true_path && !false_nodes.is_empty() && false_is_articulation {
+                // false path appear first, the true path maybe empty
+                // in that case the false program must be terminated
+                *iter = backup_iter;
+                break;
+            }
+
+            if in_true_path && bt_t.branch_type != BranchType::Unknown {
+                // true path is terminated
+                *iter = backup_iter;
+                break;
+            }
+
+            if in_false_path && bt_f.branch_type != BranchType::Unknown {
+                // false path is terminated
+                *iter = backup_iter;
+                break;
+            }
 
             if in_true_path && in_false_path {
                 // both paths are merged
@@ -1268,6 +1481,14 @@ fn follow_ifelse_boundaries(
                 true_paths.extend(n.next.next_blocks().iter().copied());
             }
             if in_false_path {
+                if false_paths.is_empty() {
+                    false_is_articulation = n
+                        .meta()
+                        .get::<DominationMeta>()
+                        .as_ref()
+                        .map(|x| x.is_domination)
+                        .unwrap_or(false);
+                }
                 if !in_true_path {
                     if first_branch.is_none() {
                         first_branch = Some(false);
@@ -1282,15 +1503,15 @@ fn follow_ifelse_boundaries(
         }
     }
 
-    let mut true_program = build_program(global_blocks, true_nodes.iter(), false)?;
-    let mut false_program = build_program(global_blocks, false_nodes.iter(), false)?;
+    let mut true_program = build_program(true_nodes.iter(), level + 1, false)?;
+    let mut false_program = build_program(false_nodes.iter(), level + 1, false)?;
 
     if true_program.inner().blocks.is_empty() {
-        true_program = program_branch_to(global_blocks, t);
+        true_program = program_branch_to(t, bt_t.branch_type);
     }
 
     if false_program.inner().blocks.is_empty() {
-        false_program = program_branch_to(global_blocks, f);
+        false_program = program_branch_to(f, bt_f.branch_type);
     }
 
     Ok(HyperBlock::IfElseBlocks {
@@ -1301,80 +1522,39 @@ fn follow_ifelse_boundaries(
 }
 
 fn program_branch_to(
-    _global_blocks: &[BasicBlock<usize, StacklessBlockContent>],
     target: usize,
+    branch_type: BranchType,
 ) -> WithMetadata<CodeUnitBlock<usize, StacklessBlockContent>> {
     let mut p = CodeUnitBlock {
         blocks: Vec::new(),
         terminate: false,
     }
     .with_metadata();
+
     let mut block: BasicBlock<usize, StacklessBlockContent> = BasicBlock::default();
+    let jump_type = match branch_type {
+        BranchType::Break => JumpType::Break,
+        BranchType::Continue => JumpType::Continue,
+        BranchType::Unknown => JumpType::Unknown,
+    };
     block.content.code.push(
         AnnotatedBytecodeData {
             original_offset: usize::MAX,
             bytecode: Bytecode::Jump(AttrId::new(u16::MAX as usize), Label::new(target)),
-            jump_type: JumpType::Unknown,
+            jump_type,
             removed: false,
         }
         .with_metadata(),
     );
-    block.next = Terminator::Branch { target };
+    block.next = match branch_type {
+        BranchType::Break => Terminator::Break { target },
+        BranchType::Continue => Terminator::Continue { target },
+        BranchType::Unknown => Terminator::Branch { target },
+    };
+
     p.inner_mut()
         .blocks
         .push(HyperBlock::ConnectedBlocks(vec![block.with_metadata()]).with_metadata());
 
     p
-}
-
-fn build_terminated_program(
-    global_blocks: &[BasicBlock<usize, StacklessBlockContent>],
-    target: usize,
-) -> Option<WithMetadata<CodeUnitBlock<usize, StacklessBlockContent>>> {
-    if global_blocks[target].next.is_terminated() {
-        let mut p = CodeUnitBlock {
-            blocks: Vec::new(),
-            terminate: false,
-        }
-        .with_metadata();
-        p.inner_mut().blocks.push(
-            HyperBlock::ConnectedBlocks(vec![global_blocks[target].clone().with_metadata()])
-                .with_metadata(),
-        );
-
-        Some(p)
-    } else {
-        if let Terminator::IfElse {
-            if_block,
-            else_block,
-        } = &global_blocks[target].next
-        {
-            let Some(if_program) = build_terminated_program(global_blocks, *if_block) else {
-                return None;
-            };
-            let Some(else_program) = build_terminated_program(global_blocks, *else_block) else {
-                return None;
-            };
-            let mut p = CodeUnitBlock {
-                blocks: Vec::new(),
-                terminate: false,
-            }
-            .with_metadata();
-            p.inner_mut().blocks.push(
-                HyperBlock::ConnectedBlocks(vec![global_blocks[target].clone().with_metadata()])
-                    .with_metadata(),
-            );
-            p.inner_mut().blocks.push(
-                HyperBlock::IfElseBlocks {
-                    if_unit: Box::new(if_program),
-                    else_unit: Box::new(else_program),
-                }
-                .with_metadata(),
-            );
-
-            Some(p)
-        } else {
-            None
-        }
-    }
 }

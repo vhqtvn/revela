@@ -6,6 +6,6 @@ module 0x12::tc8a {
         };
         v0 + 2
     }
-    
+
     // decompiled from Move bytecode v7
 }

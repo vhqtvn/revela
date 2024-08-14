@@ -3,16 +3,16 @@ module 0x1::gas_schedule {
         key: 0x1::string::String,
         val: u64,
     }
-    
+
     struct GasSchedule has copy, drop, key {
         entries: vector<GasEntry>,
     }
-    
+
     struct GasScheduleV2 has copy, drop, store, key {
         feature_version: u64,
         entries: vector<GasEntry>,
     }
-    
+
     public(friend) fun initialize(arg0: &signer, arg1: vector<u8>) {
         0x1::system_addresses::assert_aptos_framework(arg0);
         if (0x1::vector::is_empty<u8>(&arg1)) {
@@ -20,7 +20,7 @@ module 0x1::gas_schedule {
         };
         move_to<GasScheduleV2>(arg0, 0x1::util::from_bytes<GasScheduleV2>(arg1));
     }
-    
+
     public(friend) fun on_new_epoch(arg0: &signer) acquires GasScheduleV2 {
         0x1::system_addresses::assert_aptos_framework(arg0);
         if (0x1::config_buffer::does_exist<GasScheduleV2>()) {
@@ -31,7 +31,7 @@ module 0x1::gas_schedule {
             };
         };
     }
-    
+
     public fun set_for_next_epoch(arg0: &signer, arg1: vector<u8>) acquires GasScheduleV2 {
         0x1::system_addresses::assert_aptos_framework(arg0);
         if (0x1::vector::is_empty<u8>(&arg1)) {
@@ -44,7 +44,7 @@ module 0x1::gas_schedule {
         };
         0x1::config_buffer::upsert<GasScheduleV2>(v0);
     }
-    
+
     public fun set_for_next_epoch_check_hash(arg0: &signer, arg1: vector<u8>, arg2: vector<u8>) acquires GasScheduleV2 {
         0x1::system_addresses::assert_aptos_framework(arg0);
         if (0x1::vector::is_empty<u8>(&arg2)) {
@@ -59,7 +59,7 @@ module 0x1::gas_schedule {
         };
         0x1::config_buffer::upsert<GasScheduleV2>(v0);
     }
-    
+
     public fun set_gas_schedule(arg0: &signer, arg1: vector<u8>) acquires GasSchedule, GasScheduleV2 {
         0x1::system_addresses::assert_aptos_framework(arg0);
         if (0x1::vector::is_empty<u8>(&arg1)) {
@@ -79,15 +79,15 @@ module 0x1::gas_schedule {
         };
         0x1::reconfiguration::reconfigure();
     }
-    
+
     public fun set_storage_gas_config(arg0: &signer, arg1: 0x1::storage_gas::StorageGasConfig) {
         0x1::storage_gas::set_config(arg0, arg1);
         0x1::reconfiguration::reconfigure();
     }
-    
+
     public fun set_storage_gas_config_for_next_epoch(arg0: &signer, arg1: 0x1::storage_gas::StorageGasConfig) {
         0x1::storage_gas::set_config(arg0, arg1);
     }
-    
+
     // decompiled from Move bytecode v7
 }

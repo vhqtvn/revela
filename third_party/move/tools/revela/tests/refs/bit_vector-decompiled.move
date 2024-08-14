@@ -3,16 +3,16 @@ module 0x1::bit_vector {
         length: u64,
         bit_field: vector<bool>,
     }
-    
+
     public fun length(arg0: &BitVector) : u64 {
         0x1::vector::length<bool>(&arg0.bit_field)
     }
-    
+
     public fun is_index_set(arg0: &BitVector, arg1: u64) : bool {
         assert!(arg1 < 0x1::vector::length<bool>(&arg0.bit_field), 131072);
         *0x1::vector::borrow<bool>(&arg0.bit_field, arg1)
     }
-    
+
     public fun longest_set_sequence_starting_at(arg0: &BitVector, arg1: u64) : u64 {
         assert!(arg1 < arg0.length, 131072);
         let v0 = arg1;
@@ -24,7 +24,7 @@ module 0x1::bit_vector {
         };
         v0 - arg1
     }
-    
+
     public fun new(arg0: u64) : BitVector {
         assert!(arg0 > 0, 131073);
         assert!(arg0 < 1024, 131073);
@@ -35,16 +35,16 @@ module 0x1::bit_vector {
             v0 = v0 + 1;
         };
         BitVector{
-            length    : arg0, 
+            length    : arg0,
             bit_field : v1,
         }
     }
-    
+
     public fun set(arg0: &mut BitVector, arg1: u64) {
         assert!(arg1 < 0x1::vector::length<bool>(&arg0.bit_field), 131072);
         *0x1::vector::borrow_mut<bool>(&mut arg0.bit_field, arg1) = true;
     }
-    
+
     public fun shift_left(arg0: &mut BitVector, arg1: u64) {
         if (arg1 >= arg0.length) {
             let v0 = &mut arg0.bit_field;
@@ -57,11 +57,9 @@ module 0x1::bit_vector {
             let v1 = arg1;
             while (v1 < arg0.length) {
                 if (is_index_set(arg0, v1)) {
-                    let v2 = v1 - arg1;
-                    set(arg0, v2);
+                    set(arg0, v1 - arg1);
                 } else {
-                    let v3 = v1 - arg1;
-                    unset(arg0, v3);
+                    unset(arg0, v1 - arg1);
                 };
                 v1 = v1 + 1;
             };
@@ -72,11 +70,11 @@ module 0x1::bit_vector {
             };
         };
     }
-    
+
     public fun unset(arg0: &mut BitVector, arg1: u64) {
         assert!(arg1 < 0x1::vector::length<bool>(&arg0.bit_field), 131072);
         *0x1::vector::borrow_mut<bool>(&mut arg0.bit_field, arg1) = false;
     }
-    
+
     // decompiled from Move bytecode v7
 }

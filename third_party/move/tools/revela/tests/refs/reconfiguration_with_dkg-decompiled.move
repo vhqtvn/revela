@@ -15,12 +15,12 @@ module 0x1::reconfiguration_with_dkg {
         0x1::randomness_api_v0_config::on_new_epoch(arg0);
         0x1::reconfiguration::reconfigure();
     }
-    
+
     fun finish_with_dkg_result(arg0: &signer, arg1: vector<u8>) {
         0x1::dkg::finish(arg1);
         finish(arg0);
     }
-    
+
     public(friend) fun try_start() {
         let v0 = 0x1::dkg::incomplete_session();
         if (0x1::option::is_some<0x1::dkg::DKGSessionState>(&v0)) {
@@ -34,6 +34,6 @@ module 0x1::reconfiguration_with_dkg {
         let v3 = 0x1::stake::next_validator_consensus_infos();
         0x1::dkg::start(0x1::reconfiguration::current_epoch(), 0x1::randomness_config::current(), v2, v3);
     }
-    
+
     // decompiled from Move bytecode v7
 }

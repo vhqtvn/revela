@@ -44,17 +44,22 @@ impl<'a> cfg::datastructs::DecompileDisplayContext<StacklessBlockIdentifier, Sta
         let insts = &node.content.code;
         let mut iter = insts.iter().enumerate().peekable();
 
+        let mut final_annotation_ran = false;
+
         while let Some((_, code)) = iter.next() {
             if iter.peek().is_none() {
                 // last instruction
-                match node.next {
+                final_annotation_ran = true;
+                match &node.next {
                     Terminator::Normal | Terminator::Ret | Terminator::Abort => {}
 
                     Terminator::Break { .. } | Terminator::Continue { .. } => {
                         if let Bytecode::Jump(..) = code.bytecode {
                             break;
                         } else {
-                            panic!("Error: break/continue block does not end with a jump instruction");
+                            panic!(
+                                "Error: break/continue block does not end with a jump instruction"
+                            );
                         }
                     }
 
@@ -101,13 +106,35 @@ impl<'a> cfg::datastructs::DecompileDisplayContext<StacklessBlockIdentifier, Sta
 
             match code.bytecode {
                 Bytecode::Label(_, label) => {
-                    self.add_lines(
-                            &format!("// label {} @{}", label.as_usize(), code.original_offset));
+                    self.add_lines(&format!(
+                        "// label {} @{}",
+                        label.as_usize(),
+                        code.original_offset
+                    ));
                 }
 
                 _ => {
-                    self.add_lines(&code.bytecode
-                            .display(self.function_target, &self.label_offsets).to_string());
+                    self.add_lines(
+                        &code
+                            .bytecode
+                            .display(self.function_target, &self.label_offsets)
+                            .to_string(),
+                    );
+                }
+            }
+        }
+
+        if !final_annotation_ran {
+            match node.next {
+                Terminator::Normal => {}
+                Terminator::Ret
+                | Terminator::Abort
+                | Terminator::Break { .. }
+                | Terminator::Continue { .. }
+                | Terminator::IfElse { .. }
+                | Terminator::Branch { .. } => {}
+                Terminator::While { .. } => {
+                    unreachable!()
                 }
             }
         }

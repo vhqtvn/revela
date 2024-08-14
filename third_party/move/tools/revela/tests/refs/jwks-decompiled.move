@@ -2,61 +2,61 @@ module 0x1::jwks {
     struct AllProvidersJWKs has copy, drop, store {
         entries: vector<ProviderJWKs>,
     }
-    
+
     struct JWK has copy, drop, store {
         variant: 0x1::copyable_any::Any,
     }
-    
+
     struct OIDCProvider has copy, drop, store {
         name: vector<u8>,
         config_url: vector<u8>,
     }
-    
+
     struct ObservedJWKs has copy, drop, store, key {
         jwks: AllProvidersJWKs,
     }
-    
+
     struct ObservedJWKsUpdated has drop, store {
         epoch: u64,
         jwks: AllProvidersJWKs,
     }
-    
+
     struct Patch has copy, drop, store {
         variant: 0x1::copyable_any::Any,
     }
-    
+
     struct PatchRemoveAll has copy, drop, store {
         dummy_field: bool,
     }
-    
+
     struct PatchRemoveIssuer has copy, drop, store {
         issuer: vector<u8>,
     }
-    
+
     struct PatchRemoveJWK has copy, drop, store {
         issuer: vector<u8>,
         jwk_id: vector<u8>,
     }
-    
+
     struct PatchUpsertJWK has copy, drop, store {
         issuer: vector<u8>,
         jwk: JWK,
     }
-    
+
     struct PatchedJWKs has drop, key {
         jwks: AllProvidersJWKs,
     }
-    
+
     struct Patches has key {
         patches: vector<Patch>,
     }
-    
+
     struct ProviderJWKs has copy, drop, store {
         issuer: vector<u8>,
         version: u64,
         jwks: vector<JWK>,
     }
-    
+
     struct RSA_JWK has copy, drop, store {
         kid: 0x1::string::String,
         kty: 0x1::string::String,
@@ -64,70 +64,64 @@ module 0x1::jwks {
         e: 0x1::string::String,
         n: 0x1::string::String,
     }
-    
+
     struct SupportedOIDCProviders has copy, drop, store, key {
         providers: vector<OIDCProvider>,
     }
-    
+
     struct UnsupportedJWK has copy, drop, store {
         id: vector<u8>,
         payload: vector<u8>,
     }
-    
+
     fun apply_patch(arg0: &mut AllProvidersJWKs, arg1: Patch) {
         let v0 = *0x1::string::bytes(0x1::copyable_any::type_name(&arg1.variant));
         if (v0 == b"0x1::jwks::PatchRemoveAll") {
             arg0.entries = 0x1::vector::empty<ProviderJWKs>();
-        } else {
-            if (v0 == b"0x1::jwks::PatchRemoveIssuer") {
-                let v1 = 0x1::copyable_any::unpack<PatchRemoveIssuer>(arg1.variant);
-                remove_issuer(arg0, v1.issuer);
-            } else {
-                if (v0 == b"0x1::jwks::PatchRemoveJWK") {
-                    let v2 = 0x1::copyable_any::unpack<PatchRemoveJWK>(arg1.variant);
-                    let v3 = remove_issuer(arg0, v2.issuer);
-                    if (0x1::option::is_some<ProviderJWKs>(&v3)) {
-                        let v4 = 0x1::option::extract<ProviderJWKs>(&mut v3);
-                        remove_jwk(&mut v4, v2.jwk_id);
-                        upsert_provider_jwks(arg0, v4);
-                    };
-                } else {
-                    assert!(v0 == b"0x1::jwks::PatchUpsertJWK", 0x1::error::invalid_argument(3));
-                    let v5 = 0x1::copyable_any::unpack<PatchUpsertJWK>(arg1.variant);
-                    let v6 = remove_issuer(arg0, v5.issuer);
-                    let v7 = if (0x1::option::is_some<ProviderJWKs>(&v6)) {
-                        0x1::option::extract<ProviderJWKs>(&mut v6)
-                    } else {
-                        ProviderJWKs{issuer: v5.issuer, version: 0, jwks: 0x1::vector::empty<JWK>()}
-                    };
-                    upsert_jwk(&mut v7, v5.jwk);
-                    upsert_provider_jwks(arg0, v7);
-                };
+        } else if (v0 == b"0x1::jwks::PatchRemoveIssuer") {
+            let v1 = 0x1::copyable_any::unpack<PatchRemoveIssuer>(arg1.variant);
+            remove_issuer(arg0, v1.issuer);
+        } else if (v0 == b"0x1::jwks::PatchRemoveJWK") {
+            let v2 = 0x1::copyable_any::unpack<PatchRemoveJWK>(arg1.variant);
+            let v3 = remove_issuer(arg0, v2.issuer);
+            if (0x1::option::is_some<ProviderJWKs>(&v3)) {
+                let v4 = 0x1::option::extract<ProviderJWKs>(&mut v3);
+                let v5 = &mut v4;
+                remove_jwk(v5, v2.jwk_id);
+                upsert_provider_jwks(arg0, v4);
             };
+        } else {
+            assert!(v0 == b"0x1::jwks::PatchUpsertJWK", 0x1::error::invalid_argument(3));
+            let v6 = 0x1::copyable_any::unpack<PatchUpsertJWK>(arg1.variant);
+            let v7 = remove_issuer(arg0, v6.issuer);
+            let v8 = if (0x1::option::is_some<ProviderJWKs>(&v7)) {
+                0x1::option::extract<ProviderJWKs>(&mut v7)
+            } else {
+                ProviderJWKs{issuer: v6.issuer, version: 0, jwks: 0x1::vector::empty<JWK>()}
+            };
+            let v9 = &mut v8;
+            upsert_jwk(v9, v6.jwk);
+            upsert_provider_jwks(arg0, v8);
         };
-        return
-        abort 0x1::error::invalid_argument(3)
     }
-    
+
     fun get_jwk_id(arg0: &JWK) : vector<u8> {
         let v0 = *0x1::string::bytes(0x1::copyable_any::type_name(&arg0.variant));
-        let v1 = if (v0 == b"0x1::jwks::RSA_JWK") {
+        if (v0 == b"0x1::jwks::RSA_JWK") {
             let v2 = 0x1::copyable_any::unpack<RSA_JWK>(arg0.variant);
             *0x1::string::bytes(&v2.kid)
         } else {
             assert!(v0 == b"0x1::jwks::UnsupportedJWK", 0x1::error::invalid_argument(4));
             let v3 = 0x1::copyable_any::unpack<UnsupportedJWK>(arg0.variant);
             v3.id
-        };
-        return v1
-        abort 0x1::error::invalid_argument(4)
+        }
     }
-    
+
     public fun get_patched_jwk(arg0: vector<u8>, arg1: vector<u8>) : JWK acquires PatchedJWKs {
         let v0 = try_get_patched_jwk(arg0, arg1);
         0x1::option::extract<JWK>(&mut v0)
     }
-    
+
     public fun initialize(arg0: &signer) {
         0x1::system_addresses::assert_aptos_framework(arg0);
         let v0 = SupportedOIDCProviders{providers: 0x1::vector::empty<OIDCProvider>()};
@@ -141,52 +135,52 @@ module 0x1::jwks {
         let v5 = PatchedJWKs{jwks: v4};
         move_to<PatchedJWKs>(arg0, v5);
     }
-    
+
     public fun new_patch_remove_all() : Patch {
         let v0 = PatchRemoveAll{dummy_field: false};
         Patch{variant: 0x1::copyable_any::pack<PatchRemoveAll>(v0)}
     }
-    
+
     public fun new_patch_remove_issuer(arg0: vector<u8>) : Patch {
         let v0 = PatchRemoveIssuer{issuer: arg0};
         Patch{variant: 0x1::copyable_any::pack<PatchRemoveIssuer>(v0)}
     }
-    
+
     public fun new_patch_remove_jwk(arg0: vector<u8>, arg1: vector<u8>) : Patch {
         let v0 = PatchRemoveJWK{
-            issuer : arg0, 
+            issuer : arg0,
             jwk_id : arg1,
         };
         Patch{variant: 0x1::copyable_any::pack<PatchRemoveJWK>(v0)}
     }
-    
+
     public fun new_patch_upsert_jwk(arg0: vector<u8>, arg1: JWK) : Patch {
         let v0 = PatchUpsertJWK{
-            issuer : arg0, 
+            issuer : arg0,
             jwk    : arg1,
         };
         Patch{variant: 0x1::copyable_any::pack<PatchUpsertJWK>(v0)}
     }
-    
+
     public fun new_rsa_jwk(arg0: 0x1::string::String, arg1: 0x1::string::String, arg2: 0x1::string::String, arg3: 0x1::string::String) : JWK {
         let v0 = RSA_JWK{
-            kid : arg0, 
-            kty : 0x1::string::utf8(b"RSA"), 
-            alg : arg1, 
-            e   : arg2, 
+            kid : arg0,
+            kty : 0x1::string::utf8(b"RSA"),
+            alg : arg1,
+            e   : arg2,
             n   : arg3,
         };
         JWK{variant: 0x1::copyable_any::pack<RSA_JWK>(v0)}
     }
-    
+
     public fun new_unsupported_jwk(arg0: vector<u8>, arg1: vector<u8>) : JWK {
         let v0 = UnsupportedJWK{
-            id      : arg0, 
+            id      : arg0,
             payload : arg1,
         };
         JWK{variant: 0x1::copyable_any::pack<UnsupportedJWK>(v0)}
     }
-    
+
     public(friend) fun on_new_epoch(arg0: &signer) acquires SupportedOIDCProviders {
         0x1::system_addresses::assert_aptos_framework(arg0);
         if (0x1::config_buffer::does_exist<SupportedOIDCProviders>()) {
@@ -198,19 +192,20 @@ module 0x1::jwks {
             };
         };
     }
-    
+
     fun regenerate_patched_jwks() acquires ObservedJWKs, PatchedJWKs, Patches {
         let v0 = borrow_global<ObservedJWKs>(@0x1).jwks;
         let v1 = &borrow_global<Patches>(@0x1).patches;
         let v2 = 0;
         while (v2 < 0x1::vector::length<Patch>(v1)) {
-            apply_patch(&mut v0, *0x1::vector::borrow<Patch>(v1, v2));
+            let v3 = &mut v0;
+            apply_patch(v3, *0x1::vector::borrow<Patch>(v1, v2));
             v2 = v2 + 1;
         };
-        let v3 = PatchedJWKs{jwks: v0};
-        *borrow_global_mut<PatchedJWKs>(@0x1) = v3;
+        let v4 = PatchedJWKs{jwks: v0};
+        *borrow_global_mut<PatchedJWKs>(@0x1) = v4;
     }
-    
+
     fun remove_issuer(arg0: &mut AllProvidersJWKs, arg1: vector<u8>) : 0x1::option::Option<ProviderJWKs> {
         let v0 = &arg0.entries;
         let v1 = 0;
@@ -230,19 +225,21 @@ module 0x1::jwks {
             0x1::option::none<ProviderJWKs>()
         }
     }
-    
+
     public fun remove_issuer_from_observed_jwks(arg0: &signer, arg1: vector<u8>) : 0x1::option::Option<ProviderJWKs> acquires ObservedJWKs, PatchedJWKs, Patches {
         0x1::system_addresses::assert_aptos_framework(arg0);
         let v0 = borrow_global_mut<ObservedJWKs>(@0x1);
-        let v1 = ObservedJWKsUpdated{
-            epoch : 0x1::reconfiguration::current_epoch(), 
+        let v1 = &mut v0.jwks;
+        let v2 = remove_issuer(v1, arg1);
+        let v3 = ObservedJWKsUpdated{
+            epoch : 0x1::reconfiguration::current_epoch(),
             jwks  : v0.jwks,
         };
-        0x1::event::emit<ObservedJWKsUpdated>(v1);
+        0x1::event::emit<ObservedJWKsUpdated>(v3);
         regenerate_patched_jwks();
-        remove_issuer(&mut v0.jwks, arg1)
+        v2
     }
-    
+
     fun remove_jwk(arg0: &mut ProviderJWKs, arg1: vector<u8>) : 0x1::option::Option<JWK> {
         let v0 = &arg0.jwks;
         let v1 = 0;
@@ -262,13 +259,14 @@ module 0x1::jwks {
             0x1::option::none<JWK>()
         }
     }
-    
+
     public fun remove_oidc_provider(arg0: &signer, arg1: vector<u8>) : 0x1::option::Option<vector<u8>> acquires SupportedOIDCProviders {
         0x1::system_addresses::assert_aptos_framework(arg0);
         0x1::chain_status::assert_genesis();
-        remove_oidc_provider_internal(borrow_global_mut<SupportedOIDCProviders>(@0x1), arg1)
+        let v0 = borrow_global_mut<SupportedOIDCProviders>(@0x1);
+        remove_oidc_provider_internal(v0, arg1)
     }
-    
+
     public fun remove_oidc_provider_for_next_epoch(arg0: &signer, arg1: vector<u8>) : 0x1::option::Option<vector<u8>> acquires SupportedOIDCProviders {
         0x1::system_addresses::assert_aptos_framework(arg0);
         let v0 = if (0x1::config_buffer::does_exist<SupportedOIDCProviders>()) {
@@ -276,10 +274,11 @@ module 0x1::jwks {
         } else {
             *borrow_global_mut<SupportedOIDCProviders>(@0x1)
         };
+        let v1 = &mut v0;
         0x1::config_buffer::upsert<SupportedOIDCProviders>(v0);
-        remove_oidc_provider_internal(&mut v0, arg1)
+        remove_oidc_provider_internal(v1, arg1)
     }
-    
+
     fun remove_oidc_provider_internal(arg0: &mut SupportedOIDCProviders, arg1: vector<u8>) : 0x1::option::Option<vector<u8>> {
         let v0 = &arg0.providers;
         let v1 = 0;
@@ -300,13 +299,13 @@ module 0x1::jwks {
             0x1::option::none<vector<u8>>()
         }
     }
-    
+
     public fun set_patches(arg0: &signer, arg1: vector<Patch>) acquires ObservedJWKs, PatchedJWKs, Patches {
         0x1::system_addresses::assert_aptos_framework(arg0);
         borrow_global_mut<Patches>(@0x1).patches = arg1;
         regenerate_patched_jwks();
     }
-    
+
     fun try_get_jwk_by_id(arg0: &ProviderJWKs, arg1: vector<u8>) : 0x1::option::Option<JWK> {
         let v0 = &arg0.jwks;
         let v1 = 0;
@@ -326,7 +325,7 @@ module 0x1::jwks {
             0x1::option::none<JWK>()
         }
     }
-    
+
     fun try_get_jwk_by_issuer(arg0: &AllProvidersJWKs, arg1: vector<u8>, arg2: vector<u8>) : 0x1::option::Option<JWK> {
         let v0 = &arg0.entries;
         let v1 = 0;
@@ -346,31 +345,30 @@ module 0x1::jwks {
             0x1::option::none<JWK>()
         }
     }
-    
+
     public fun try_get_patched_jwk(arg0: vector<u8>, arg1: vector<u8>) : 0x1::option::Option<JWK> acquires PatchedJWKs {
         try_get_jwk_by_issuer(&borrow_global<PatchedJWKs>(@0x1).jwks, arg0, arg1)
     }
-    
+
     public fun upsert_into_observed_jwks(arg0: &signer, arg1: vector<ProviderJWKs>) acquires ObservedJWKs, PatchedJWKs, Patches {
         0x1::system_addresses::assert_aptos_framework(arg0);
         let v0 = borrow_global_mut<ObservedJWKs>(@0x1);
-        let v1 = arg1;
-        0x1::vector::reverse<ProviderJWKs>(&mut v1);
-        let v2 = v1;
-        let v3 = 0x1::vector::length<ProviderJWKs>(&v2);
-        while (v3 > 0) {
-            upsert_provider_jwks(&mut v0.jwks, 0x1::vector::pop_back<ProviderJWKs>(&mut v2));
-            v3 = v3 - 1;
+        0x1::vector::reverse<ProviderJWKs>(&mut arg1);
+        let v1 = 0x1::vector::length<ProviderJWKs>(&arg1);
+        while (v1 > 0) {
+            let v2 = &mut v0.jwks;
+            upsert_provider_jwks(v2, 0x1::vector::pop_back<ProviderJWKs>(&mut arg1));
+            v1 = v1 - 1;
         };
-        0x1::vector::destroy_empty<ProviderJWKs>(v2);
-        let v4 = ObservedJWKsUpdated{
-            epoch : 0x1::reconfiguration::current_epoch(), 
+        0x1::vector::destroy_empty<ProviderJWKs>(arg1);
+        let v3 = ObservedJWKsUpdated{
+            epoch : 0x1::reconfiguration::current_epoch(),
             jwks  : v0.jwks,
         };
-        0x1::event::emit<ObservedJWKsUpdated>(v4);
+        0x1::event::emit<ObservedJWKsUpdated>(v3);
         regenerate_patched_jwks();
     }
-    
+
     fun upsert_jwk(arg0: &mut ProviderJWKs, arg1: JWK) : 0x1::option::Option<JWK> {
         let v0 = 0;
         let v1 = false;
@@ -393,19 +391,20 @@ module 0x1::jwks {
             0x1::option::none<JWK>()
         }
     }
-    
+
     public fun upsert_oidc_provider(arg0: &signer, arg1: vector<u8>, arg2: vector<u8>) : 0x1::option::Option<vector<u8>> acquires SupportedOIDCProviders {
         0x1::system_addresses::assert_aptos_framework(arg0);
         0x1::chain_status::assert_genesis();
         let v0 = borrow_global_mut<SupportedOIDCProviders>(@0x1);
-        let v1 = OIDCProvider{
-            name       : arg1, 
+        let v1 = remove_oidc_provider_internal(v0, arg1);
+        let v2 = OIDCProvider{
+            name       : arg1,
             config_url : arg2,
         };
-        0x1::vector::push_back<OIDCProvider>(&mut v0.providers, v1);
-        remove_oidc_provider_internal(v0, arg1)
+        0x1::vector::push_back<OIDCProvider>(&mut v0.providers, v2);
+        v1
     }
-    
+
     public fun upsert_oidc_provider_for_next_epoch(arg0: &signer, arg1: vector<u8>, arg2: vector<u8>) : 0x1::option::Option<vector<u8>> acquires SupportedOIDCProviders {
         0x1::system_addresses::assert_aptos_framework(arg0);
         let v0 = if (0x1::config_buffer::does_exist<SupportedOIDCProviders>()) {
@@ -413,15 +412,16 @@ module 0x1::jwks {
         } else {
             *borrow_global_mut<SupportedOIDCProviders>(@0x1)
         };
-        let v1 = OIDCProvider{
-            name       : arg1, 
+        let v1 = &mut v0;
+        let v2 = OIDCProvider{
+            name       : arg1,
             config_url : arg2,
         };
-        0x1::vector::push_back<OIDCProvider>(&mut v0.providers, v1);
+        0x1::vector::push_back<OIDCProvider>(&mut v0.providers, v2);
         0x1::config_buffer::upsert<SupportedOIDCProviders>(v0);
-        remove_oidc_provider_internal(&mut v0, arg1)
+        remove_oidc_provider_internal(v1, arg1)
     }
-    
+
     fun upsert_provider_jwks(arg0: &mut AllProvidersJWKs, arg1: ProviderJWKs) : 0x1::option::Option<ProviderJWKs> {
         let v0 = 0;
         let v1 = false;
@@ -444,6 +444,6 @@ module 0x1::jwks {
             0x1::option::none<ProviderJWKs>()
         }
     }
-    
+
     // decompiled from Move bytecode v7
 }

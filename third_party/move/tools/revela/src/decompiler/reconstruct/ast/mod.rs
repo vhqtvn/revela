@@ -2,222 +2,16 @@
 // Copyright © Aptos Foundation
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use crate::decompiler::evaluator::stackless::{ExprNodeOperation, ExprNodeRef};
+use self::expr::{DecompiledExpr, DecompiledExprRef};
 
 use super::super::naming::Naming;
 
-use super::{super::evaluator::stackless::Expr, code_unit::SourceCodeUnit};
+use super::code_unit::SourceCodeUnit;
 
+pub mod expr;
 pub mod optimizers;
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum DecompiledExpr {
-    Undefined,
-    EvaluationExpr(Expr),
-    #[allow(dead_code)]
-    Variable(usize),
-    Tuple(Vec<DecompiledExprRef>),
-}
-
-pub(crate) type DecompiledExprRef = Box<DecompiledExpr>;
-
-impl DecompiledExpr {
-    pub fn boxed(self: Self) -> DecompiledExprRef {
-        Box::new(self)
-    }
-
-    pub fn copy_as_ref(&self) -> DecompiledExprRef {
-        match self {
-            DecompiledExpr::Undefined => DecompiledExpr::Undefined.boxed(),
-
-            DecompiledExpr::EvaluationExpr(expr) => {
-                DecompiledExpr::EvaluationExpr(expr.copy()).boxed()
-            }
-
-            DecompiledExpr::Variable(var) => DecompiledExpr::Variable(*var).boxed(),
-
-            DecompiledExpr::Tuple(exprs) => {
-                DecompiledExpr::Tuple(exprs.iter().map(|e| e.copy_as_ref()).collect()).boxed()
-            }
-        }
-    }
-
-    pub fn commit_pending_variables(
-        &self,
-        selected_variables: &HashSet<usize>,
-    ) -> DecompiledExprRef {
-        match self {
-            DecompiledExpr::Undefined => DecompiledExpr::Undefined.boxed(),
-
-            DecompiledExpr::EvaluationExpr(expr) => {
-                DecompiledExpr::EvaluationExpr(expr.commit_pending_variables(selected_variables))
-                    .boxed()
-            }
-
-            DecompiledExpr::Variable(var) => DecompiledExpr::Variable(*var).boxed(),
-
-            DecompiledExpr::Tuple(exprs) => DecompiledExpr::Tuple(
-                exprs
-                    .iter()
-                    .map(|e| e.commit_pending_variables(selected_variables))
-                    .collect(),
-            )
-            .boxed(),
-        }
-    }
-
-    pub fn is_single_or_tuple_variable_expr(&self) -> Option<Vec<usize>> {
-        match self {
-            DecompiledExpr::Tuple(exprs) => {
-                exprs.iter().map(|e| e.is_single_variable_expr()).collect()
-            }
-
-            DecompiledExpr::EvaluationExpr(e) => e.is_single_variable().map(|v| vec![v]),
-
-            DecompiledExpr::Variable(var) => Some(vec![*var]),
-
-            _ => None,
-        }
-    }
-
-    pub fn is_single_variable_expr(&self) -> Option<usize> {
-        let vars = self.is_single_or_tuple_variable_expr()?;
-
-        if vars.len() == 1 {
-            Some(vars[0])
-        } else {
-            None
-        }
-    }
-
-    pub fn has_reference_to_any_variable(&self, variables: &HashSet<usize>) -> bool {
-        match self {
-            DecompiledExpr::Undefined => false,
-
-            DecompiledExpr::EvaluationExpr(expr) => expr.has_reference_to_any_variable(variables),
-
-            DecompiledExpr::Variable(var) => variables.contains(var),
-
-            DecompiledExpr::Tuple(exprs) => exprs
-                .iter()
-                .any(|e| e.has_reference_to_any_variable(variables)),
-        }
-    }
-
-    pub fn rename_variables(&mut self, renamed_variables: &HashMap<usize, usize>) {
-        match self {
-            DecompiledExpr::Undefined => {}
-
-            DecompiledExpr::EvaluationExpr(expr) => {
-                expr.rename_variables(renamed_variables);
-            }
-
-            DecompiledExpr::Variable(var) => {
-                *var = renamed_variables[var];
-            }
-
-            DecompiledExpr::Tuple(exprs) => {
-                for expr in exprs {
-                    expr.rename_variables(renamed_variables);
-                }
-            }
-        }
-    }
-
-    pub fn collect_variables(
-        &self,
-        result_variables: &mut HashSet<usize>,
-        implicit_variables: &mut HashSet<usize>,
-        in_implicit_expr: bool,
-    ) {
-        match &self {
-            DecompiledExpr::Undefined => {}
-
-            DecompiledExpr::EvaluationExpr(expr) => {
-                let v = expr.collect_variables(in_implicit_expr);
-                result_variables.extend(v.variables);
-                implicit_variables.extend(v.implicit_variables);
-            }
-
-            DecompiledExpr::Variable(var) => {
-                if in_implicit_expr {
-                    implicit_variables.insert(*var);
-                } else {
-                    result_variables.insert(*var);
-                }
-            }
-
-            DecompiledExpr::Tuple(exprs) => {
-                exprs.iter().for_each(|expr| {
-                    expr.collect_variables(result_variables, implicit_variables, in_implicit_expr)
-                });
-            }
-        }
-    }
-
-    pub fn is_empty_tuple(&self) -> bool {
-        match self {
-            DecompiledExpr::Tuple(exprs) => exprs.is_empty(),
-
-            _ => false,
-        }
-    }
-
-    pub fn to_expr(&self) -> Result<ExprNodeRef, anyhow::Error> {
-        match self {
-            DecompiledExpr::Undefined => {
-                Ok(ExprNodeOperation::Raw("undefined".to_string()).to_node())
-            }
-
-            DecompiledExpr::EvaluationExpr(expr) => Ok(expr.value_copied()),
-
-            DecompiledExpr::Variable(var) => Ok(ExprNodeOperation::LocalVariable(*var).to_node()),
-
-            DecompiledExpr::Tuple(exprs) => {
-                if exprs.len() == 1 {
-                    exprs[0].to_expr()
-                } else {
-                    Err(anyhow::anyhow!("Cannot convert tuple to expr"))
-                }
-            }
-        }
-    }
-
-    pub fn to_source_decl(&self, naming: &Naming) -> Result<String, anyhow::Error> {
-        match self {
-            DecompiledExpr::EvaluationExpr(expr) => Ok(expr.to_source_decl(naming)?),
-
-            _ => self.to_source(naming),
-        }
-    }
-
-    pub fn to_source(&self, naming: &Naming) -> Result<String, anyhow::Error> {
-        match self {
-            DecompiledExpr::Undefined => Ok("undefined".to_string()),
-
-            DecompiledExpr::EvaluationExpr(expr) => Ok(expr.to_source(naming)?),
-
-            DecompiledExpr::Variable(var) => Ok(naming.variable(*var)),
-
-            DecompiledExpr::Tuple(exprs) => {
-                if exprs.len() == 1 {
-                    exprs[0].to_source(naming)
-                } else {
-                    Ok(format!(
-                        "({})",
-                        exprs
-                            .iter()
-                            .map(|e| e.to_source(naming))
-                            .collect::<Result<Vec<_>, _>>()?
-                            .join(", ")
-                    ))
-                }
-            }
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ResultUsageType {
@@ -225,6 +19,13 @@ pub(crate) enum ResultUsageType {
     Return,
     Abort,
     BlockResult,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum InTerminationType {
+    None,
+    Return,
+    Abort,
 }
 
 #[derive(Debug, Clone)]
@@ -236,7 +37,7 @@ pub(crate) enum DecompiledCodeItem {
     CommentStatement(String),
     PossibleAssignStatement {
         #[allow(dead_code)]
-        assigment_id: usize,
+        assignment_id: usize,
         variable: usize,
         value: DecompiledExprRef,
         is_decl: bool,
@@ -257,6 +58,7 @@ pub(crate) enum DecompiledCodeItem {
     AssignStructureStatement {
         structure_visible_name: String,
         variables: Vec<(String, usize)>,
+        fields_count: usize,
         value: DecompiledExprRef,
     },
     Statement {
@@ -280,14 +82,22 @@ pub(crate) type DecompiledCodeUnitRef = Box<DecompiledCodeUnit>;
 
 #[derive(Debug, Clone)]
 pub(crate) struct DecompiledCodeUnit {
-    blocks: Vec<DecompiledCodeItem>,
-    exit: Option<DecompiledExprRef>,
+    pub(crate) blocks: Vec<DecompiledCodeItem>,
+    pub(crate) exit: Option<DecompiledExprRef>,
     // sorted by variable index
-    result_variables: Vec<usize>,
+    pub(crate) result_variables: Vec<usize>,
 }
 
 impl DecompiledCodeUnit {
     pub fn new() -> DecompiledCodeUnitRef {
+        Box::new(DecompiledCodeUnit {
+            blocks: Vec::new(),
+            exit: None,
+            result_variables: Vec::new(),
+        })
+    }
+
+    pub fn new_empty(&self) -> DecompiledCodeUnitRef {
         Box::new(DecompiledCodeUnit {
             blocks: Vec::new(),
             exit: None,
@@ -376,7 +186,8 @@ impl DecompiledCodeUnit {
                     variable, value, ..
                 } => {
                     if variables.contains(variable)
-                        || value.has_reference_to_any_variable(variables) {
+                        || value.has_reference_to_any_variable(variables)
+                    {
                         return true;
                     }
                 }
@@ -424,7 +235,8 @@ impl DecompiledCodeUnit {
                         .as_ref()
                         .map(|x| x.has_reference_to_any_variable(variables))
                         .unwrap_or(false)
-                        || body.has_reference_to_any_variable(variables) {
+                        || body.has_reference_to_any_variable(variables)
+                    {
                         return true;
                     }
                 }
@@ -466,12 +278,13 @@ impl DecompiledCodeUnit {
                             ";",
                             value,
                             naming,
+                            true,
                         )?;
                     } else {
                         source.add_line(format!(
                             "// possible: {} = {};",
                             naming.variable(*variable),
-                            value.to_source(naming)?
+                            value.to_source(naming, true)?
                         ));
                     }
                 }
@@ -479,13 +292,13 @@ impl DecompiledCodeUnit {
                 DecompiledCodeItem::ReturnStatement(expr) => {
                     if root_block && can_obmit_return {
                         if !expr.is_empty_tuple() {
-                            to_decl_source(&mut source, "", "", expr, naming)?;
+                            to_decl_source(&mut source, "", "", expr, naming, true)?;
                         }
                     } else {
                         if expr.is_empty_tuple() {
                             source.add_line(format!("return"));
                         } else {
-                            to_decl_source(&mut source, "return ", "", expr, naming)?;
+                            to_decl_source(&mut source, "return ", "", expr, naming, true)?;
                         }
                     }
                 }
@@ -497,6 +310,7 @@ impl DecompiledCodeUnit {
                         if iter.peek().is_none() { "" } else { ";" },
                         expr,
                         naming,
+                        true,
                     )?;
                 }
 
@@ -532,12 +346,13 @@ impl DecompiledCodeUnit {
                             ";",
                             value,
                             naming,
+                            true,
                         )?;
                     } else {
                         source.add_line(format!(
                             "{} = {};",
                             naming.variable(*variable),
-                            value.to_source(naming)?
+                            value.to_source(naming, true)?
                         ));
                     }
                 }
@@ -555,12 +370,13 @@ impl DecompiledCodeUnit {
                             .map(|v| naming.variable(*v))
                             .collect::<Vec<_>>()
                             .join(", "),
-                        value.to_source(naming)?
+                        value.to_source(naming, true)?
                     ));
                 }
 
                 DecompiledCodeItem::AssignStructureStatement {
                     structure_visible_name,
+                    fields_count: _,
                     variables,
                     value,
                 } => {
@@ -579,7 +395,7 @@ impl DecompiledCodeUnit {
                         }
 
                         source.add_block(inner_unit);
-                        source.add_line(format!("}} = {};", value.to_source(naming)?));
+                        source.add_line(format!("}} = {};", value.to_source(naming, true)?));
                     } else {
                         source.add_line(format!(
                             "let {} {{ {} }} = {};",
@@ -589,13 +405,13 @@ impl DecompiledCodeUnit {
                                 .map(|(k, v)| format!("{}: {}", k, naming.variable(*v)))
                                 .collect::<Vec<_>>()
                                 .join(", "),
-                            value.to_source(naming)?,
+                            value.to_source(naming, true)?,
                         ));
                     }
                 }
 
                 DecompiledCodeItem::Statement { expr } => {
-                    source.add_line(format!("{};", expr.to_source(naming)?));
+                    source.add_line(format!("{};", expr.to_source(naming, true)?));
                 }
 
                 DecompiledCodeItem::IfElseStatement {
@@ -605,30 +421,41 @@ impl DecompiledCodeUnit {
                     result_variables,
                     use_as_result,
                 } => {
+                    let mut in_termination = InTerminationType::None;
                     let prefix = match use_as_result {
-                        ResultUsageType::None => let_assigment_or_empty(result_variables, naming),
+                        ResultUsageType::None => let_assignment_or_empty(result_variables, naming),
                         ResultUsageType::Return => {
+                            in_termination = InTerminationType::Return;
                             if can_obmit_return {
-                                String::new()
+                                "".to_string()
                             } else {
                                 "return ".to_string()
                             }
                         }
-                        ResultUsageType::Abort => "abort ".to_string(),
-                        ResultUsageType::BlockResult => String::new(),
+                        ResultUsageType::Abort => {
+                            in_termination = InTerminationType::Abort;
+                            "abort ".to_string()
+                        }
+                        ResultUsageType::BlockResult => "".to_string(),
                     };
 
-                    source.add_line(format!("{}if ({}) {{", prefix, cond.to_source(naming)?,));
+                    source.add_line(format!(
+                        "{}if ({}) {{",
+                        prefix,
+                        cond.to_source(naming, false)?,
+                    ));
 
                     let mut if_b = if_unit.to_source(naming, false)?;
                     if_b.add_indent(1);
                     source.add_block(if_b);
 
-                    let mut else_b = else_unit.to_source(naming, false)?;
-                    else_b.add_indent(1);
+                    let else_b = to_source_maybe_else_chain(
+                        else_unit,
+                        naming,
+                        &in_termination,
+                    )?;
 
                     if !else_b.is_empty() {
-                        source.add_line(format!("}} else {{"));
                         source.add_block(else_b);
                     }
 
@@ -645,7 +472,7 @@ impl DecompiledCodeUnit {
                     } else {
                         source.add_line(format!(
                             "while ({}) {{",
-                            cond.as_ref().unwrap().to_source(naming)?
+                            cond.as_ref().unwrap().to_source(naming, false)?
                         ));
                     }
 
@@ -658,11 +485,95 @@ impl DecompiledCodeUnit {
         }
 
         if let Some(value) = &self.exit {
-            source.add_line(format!("{}", value.to_source(naming)?));
+            source.add_line(format!("{}", value.to_source(naming, true)?));
         }
 
         Ok(source)
     }
+}
+
+fn should_follow_chain(else_unit: &DecompiledCodeUnit, in_termination: &InTerminationType) -> bool {
+    if else_unit.exit.is_some() {
+        return false;
+    }
+    if else_unit.blocks.len() != 1 {
+        return false;
+    }
+
+    let DecompiledCodeItem::IfElseStatement {
+        use_as_result,
+        result_variables,
+        ..
+    } = &else_unit.blocks[0]
+    else {
+        return false;
+    };
+
+    if result_variables.len() > 0 {
+        return false;
+    }
+
+    match (&in_termination, use_as_result) {
+        (&InTerminationType::None, &ResultUsageType::Abort | &ResultUsageType::Return) => {
+            return false;
+        }
+        (&InTerminationType::Return, &ResultUsageType::Abort) => {
+            return false;
+        }
+        (&InTerminationType::Abort, &ResultUsageType::Return) => {
+            return false;
+        }
+        _ => {}
+    }
+
+    true
+}
+
+fn to_source_maybe_else_chain(
+    else_unit: &DecompiledCodeUnit,
+    naming: &Naming<'_>,
+    in_termination: &InTerminationType,
+) -> Result<SourceCodeUnit, anyhow::Error> {
+    let mut unit = SourceCodeUnit::new(0);
+
+    if !should_follow_chain(else_unit, &in_termination) {
+        let mut else_b = else_unit
+            .to_source(naming, false)
+            .unwrap();
+        if !else_b.is_empty() {
+            else_b.add_indent(1);
+            unit.add_line("} else {".to_string());
+            unit.add_block(else_b);
+        }
+    } else {
+        let DecompiledCodeItem::IfElseStatement {
+            cond,
+            if_unit,
+            else_unit: next_else_unit,
+            ..
+        } = &else_unit.blocks[0]
+        else {
+            unreachable!()
+        };
+
+        unit.add_line(format!(
+            "}} else if ({}) {{",
+            cond.to_source(naming, false)?,
+        ));
+
+        let mut if_b = if_unit.to_source(naming, false)?;
+        if_b.add_indent(1);
+        unit.add_block(if_b);
+
+        let else_b =
+            to_source_maybe_else_chain(&next_else_unit, naming, in_termination)?;
+
+        if !else_b.is_empty() {
+            unit.add_block(else_b);
+        }
+    }
+
+    Ok(unit)
 }
 
 fn to_decl_source(
@@ -671,8 +582,9 @@ fn to_decl_source(
     suffix: &str,
     value: &DecompiledExpr,
     naming: &Naming<'_>,
+    standalone: bool,
 ) -> Result<(), anyhow::Error> {
-    let value = value.to_source_decl(naming)?;
+    let value = value.to_source_decl(naming, standalone)?;
     let value = prefix.to_string() + &value + suffix;
     let lines = value.split("\n").collect::<Vec<_>>();
 
@@ -694,7 +606,10 @@ fn to_decl_source(
     Ok(())
 }
 
-fn let_assigment_or_empty(result_variables: &Vec<usize>, naming: &Naming) -> String {
+fn let_assignment_or_empty(
+    result_variables: &Vec<usize>,
+    naming: &Naming,
+) -> String {
     if result_variables.is_empty() {
         String::new()
     } else {

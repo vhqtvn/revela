@@ -3,19 +3,19 @@ module 0x1::code {
         account: address,
         module_name: 0x1::string::String,
     }
-    
+
     struct ModuleMetadata has copy, drop, store {
         name: 0x1::string::String,
         source: vector<u8>,
         source_map: vector<u8>,
         extension: 0x1::option::Option<0x1::copyable_any::Any>,
     }
-    
+
     struct PackageDep has copy, drop, store {
         account: address,
         package_name: 0x1::string::String,
     }
-    
+
     struct PackageMetadata has copy, drop, store {
         name: 0x1::string::String,
         upgrade_policy: UpgradePolicy,
@@ -26,24 +26,24 @@ module 0x1::code {
         deps: vector<PackageDep>,
         extension: 0x1::option::Option<0x1::copyable_any::Any>,
     }
-    
+
     struct PackageRegistry has drop, store, key {
         packages: vector<PackageMetadata>,
     }
-    
+
     struct PublishPackage has drop, store {
         code_address: address,
         is_upgrade: bool,
     }
-    
+
     struct UpgradePolicy has copy, drop, store {
         policy: u8,
     }
-    
+
     public fun can_change_upgrade_policy_to(arg0: UpgradePolicy, arg1: UpgradePolicy) : bool {
         arg0.policy <= arg1.policy
     }
-    
+
     fun check_coexistence(arg0: &PackageMetadata, arg1: &vector<0x1::string::String>) {
         let v0 = &arg0.modules;
         let v1 = 0;
@@ -58,7 +58,7 @@ module 0x1::code {
             v1 = v1 + 1;
         };
     }
-    
+
     fun check_dependencies(arg0: address, arg1: &PackageMetadata) : vector<AllowedDep> acquires PackageRegistry {
         let v0 = 0x1::vector::empty<AllowedDep>();
         let v1 = &arg1.deps;
@@ -68,7 +68,7 @@ module 0x1::code {
             assert!(exists<PackageRegistry>(v3.account), 0x1::error::not_found(5));
             if (is_policy_exempted_address(v3.account)) {
                 let v4 = AllowedDep{
-                    account     : v3.account, 
+                    account     : v3.account,
                     module_name : 0x1::string::utf8(b""),
                 };
                 0x1::vector::push_back<AllowedDep>(&mut v0, v4);
@@ -87,7 +87,7 @@ module 0x1::code {
                         while (v10 < 0x1::vector::length<ModuleMetadata>(&v8.modules)) {
                             let v11 = 0x1::vector::borrow<ModuleMetadata>(&v8.modules, v10).name;
                             let v12 = AllowedDep{
-                                account     : v3.account, 
+                                account     : v3.account,
                                 module_name : v11,
                             };
                             0x1::vector::push_back<AllowedDep>(&mut v0, v12);
@@ -109,7 +109,7 @@ module 0x1::code {
         };
         v0
     }
-    
+
     fun check_upgradability(arg0: &PackageMetadata, arg1: &PackageMetadata, arg2: &vector<0x1::string::String>) {
         let v0 = upgrade_policy_immutable();
         assert!(arg0.upgrade_policy.policy < v0.policy, 0x1::error::invalid_argument(2));
@@ -124,7 +124,7 @@ module 0x1::code {
             v4 = v4 + 1;
         };
     }
-    
+
     public fun freeze_code_object(arg0: &signer, arg1: 0x1::object::Object<PackageRegistry>) acquires PackageRegistry {
         let v0 = 0x1::object::object_address<PackageRegistry>(&arg1);
         assert!(exists<PackageRegistry>(v0), 0x1::error::not_found(10));
@@ -134,22 +134,20 @@ module 0x1::code {
         let v3 = &mut v2.packages;
         let v4 = 0;
         while (v4 < 0x1::vector::length<PackageMetadata>(v3)) {
-            let v5 = 0x1::vector::borrow_mut<PackageMetadata>(v3, v4);
-            v5.upgrade_policy = upgrade_policy_immutable();
+            0x1::vector::borrow_mut<PackageMetadata>(v3, v4).upgrade_policy = upgrade_policy_immutable();
             v4 = v4 + 1;
         };
-        let v6 = v2.packages;
-        0x1::vector::reverse<PackageMetadata>(&mut v6);
-        let v7 = v6;
-        v4 = 0x1::vector::length<PackageMetadata>(&v7);
+        let v5 = v2.packages;
+        0x1::vector::reverse<PackageMetadata>(&mut v5);
+        v4 = 0x1::vector::length<PackageMetadata>(&v5);
         while (v4 > 0) {
-            let v8 = 0x1::vector::pop_back<PackageMetadata>(&mut v7);
-            check_dependencies(v0, &v8);
+            let v6 = 0x1::vector::pop_back<PackageMetadata>(&mut v5);
+            check_dependencies(v0, &v6);
             v4 = v4 - 1;
         };
-        0x1::vector::destroy_empty<PackageMetadata>(v7);
+        0x1::vector::destroy_empty<PackageMetadata>(v5);
     }
-    
+
     fun get_module_names(arg0: &PackageMetadata) : vector<0x1::string::String> {
         let v0 = 0x1::vector::empty<0x1::string::String>();
         let v1 = &arg0.modules;
@@ -161,7 +159,7 @@ module 0x1::code {
         };
         v0
     }
-    
+
     fun initialize(arg0: &signer, arg1: &signer, arg2: PackageMetadata) acquires PackageRegistry {
         0x1::system_addresses::assert_aptos_framework(arg0);
         let v0 = 0x1::signer::address_of(arg1);
@@ -174,9 +172,10 @@ module 0x1::code {
             move_to<PackageRegistry>(arg1, v2);
         };
     }
-    
+
     fun is_policy_exempted_address(arg0: address) : bool {
-        if (arg0 == @0x1 || arg0 == @0x2) {
+        let v0 = arg0 == @0x1 || arg0 == @0x2;
+        if (v0) {
             v0 = true;
         } else {
             v0 = arg0 == @0x3;
@@ -218,7 +217,7 @@ module 0x1::code {
         };
         v0
     }
-    
+
     public fun publish_package(arg0: &signer, arg1: PackageMetadata, arg2: vector<vector<u8>>) acquires PackageRegistry {
         let v0 = upgrade_policy_arbitrary();
         assert!(arg1.upgrade_policy.policy > v0.policy, 0x1::error::invalid_argument(8));
@@ -255,7 +254,7 @@ module 0x1::code {
             0x1::vector::push_back<PackageMetadata>(&mut borrow_global_mut<PackageRegistry>(v1).packages, arg1);
         };
         let v13 = PublishPackage{
-            code_address : v1, 
+            code_address : v1,
             is_upgrade   : v9 > 0,
         };
         0x1::event::emit<PublishPackage>(v13);
@@ -265,24 +264,24 @@ module 0x1::code {
             request_publish(v1, v4, arg2, v11.policy);
         };
     }
-    
+
     public entry fun publish_package_txn(arg0: &signer, arg1: vector<u8>, arg2: vector<vector<u8>>) acquires PackageRegistry {
         publish_package(arg0, 0x1::util::from_bytes<PackageMetadata>(arg1), arg2);
     }
-    
+
     native fun request_publish(arg0: address, arg1: vector<0x1::string::String>, arg2: vector<vector<u8>>, arg3: u8);
     native fun request_publish_with_allowed_deps(arg0: address, arg1: vector<0x1::string::String>, arg2: vector<AllowedDep>, arg3: vector<vector<u8>>, arg4: u8);
     public fun upgrade_policy_arbitrary() : UpgradePolicy {
         UpgradePolicy{policy: 0}
     }
-    
+
     public fun upgrade_policy_compat() : UpgradePolicy {
         UpgradePolicy{policy: 1}
     }
-    
+
     public fun upgrade_policy_immutable() : UpgradePolicy {
         UpgradePolicy{policy: 2}
     }
-    
+
     // decompiled from Move bytecode v7
 }

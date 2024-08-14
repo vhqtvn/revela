@@ -10,3 +10,4 @@ pub type StacklessBlockContent = algo::blocks_stackless::StacklessBlockContent;
 pub mod datastructs;
 pub mod stackless;
 pub mod metadata;
+pub mod stackless_variants_test_simplifier;

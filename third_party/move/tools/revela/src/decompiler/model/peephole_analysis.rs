@@ -92,7 +92,11 @@ impl PeepHoleProcessor {
             | Operation::And
             | Operation::Eq
             | Operation::Neq
-            | Operation::CastU256 => true,
+            | Operation::CastU256
+            | Operation::TestVariant(_, _, _, _)
+            | Operation::PackVariant(_, _, _, _)
+            | Operation::UnpackVariant(_, _, _, _)
+            | Operation::BorrowVariantField(_, _, _, _, _) => true,
 
             // specification opcode - dont touch it
             Operation::OpaqueCallBegin(..) | Operation::OpaqueCallEnd(..) => false,
@@ -114,11 +118,6 @@ impl PeepHoleProcessor {
             | Operation::IsParent(_, _)
             | Operation::WriteBack(_, _)
             | Operation::Havoc(..) => false,
-
-            Operation::TestVariant(_, _, _, _) => todo!(),
-            Operation::PackVariant(_, _, _, _) => todo!(),
-            Operation::UnpackVariant(_, _, _, _) => todo!(),
-            Operation::BorrowVariantField(_, _, _, _, _) => todo!(),
         }
     }
 
@@ -129,8 +128,9 @@ impl PeepHoleProcessor {
         changed: &mut bool,
         mut block: Vec<Bytecode>,
     ) -> Vec<Bytecode> {
-        fn next_remove(block: &Vec<Bytecode>) -> Option<(usize, usize)> {
+        fn next_remove(block: &Vec<Bytecode>) -> Option<(usize, Vec<usize>)> {
             let mut instruction_to_remove = HashMap::new();
+            let mut removed_dsts = vec![HashMap::<usize, usize>::new(); block.len()];
             for (idx, inst) in block.iter().enumerate() {
                 match inst {
                     Bytecode::Assign(_, dest, src, _) => {
@@ -150,10 +150,11 @@ impl PeepHoleProcessor {
                                 let can_safe_remove = match prev_inst {
                                     Bytecode::Assign(_, _, _, _) => true,
                                     Bytecode::Load(_, _, _) => true,
-                                    Bytecode::Call(_, dst, op, _, _) => {
-                                        if PeepHoleProcessor::no_side_effect(op) {
-                                            true
-                                        } else if dst.len() <= 1 {
+                                    Bytecode::Call(_, dst, _, _, _) => {
+                                        assert!(!removed_dsts[*prev_idx].contains_key(&srcs[0]));
+                                        removed_dsts[*prev_idx].insert(srcs[0], idx);
+                                        // only remove the instruction if all the dsts are removed
+                                        if dst.len() == removed_dsts[*prev_idx].len() {
                                             true
                                         } else {
                                             false
@@ -162,7 +163,19 @@ impl PeepHoleProcessor {
                                     _ => false,
                                 };
                                 if can_safe_remove {
-                                    return Some((*prev_idx, idx));
+                                    return match prev_inst {
+                                        Bytecode::Assign(_, _, _, _) | Bytecode::Load(_, _, _) => {
+                                            Some((*prev_idx, vec![idx]))
+                                        }
+                                        Bytecode::Call(_, _, _, _, _) => Some((
+                                            *prev_idx,
+                                            removed_dsts[*prev_idx]
+                                                .iter()
+                                                .map(|(_, v)| *v)
+                                                .collect(),
+                                        )),
+                                        _ => unreachable!(),
+                                    };
                                 }
                                 instruction_to_remove.remove(&srcs[0]);
                             }
@@ -180,9 +193,13 @@ impl PeepHoleProcessor {
             }
             None
         }
-        while let Some((prev, destroy)) = next_remove(&block) {
-            assert!(prev < destroy);
-            block.remove(destroy);
+        while let Some((prev, mut destroy_ops)) = next_remove(&block) {
+            destroy_ops.sort();
+            destroy_ops.dedup();
+            assert!(prev < destroy_ops[0]);
+            for destroy in destroy_ops.iter().rev() {
+                block.remove(*destroy);
+            }
             if match &mut block[prev] {
                 Bytecode::Call(_, dst, op, _, _) => {
                     if PeepHoleProcessor::no_side_effect(op) {

@@ -4,11 +4,11 @@
 
 use crate::decompiler::reconstruct::ast::optimizers::utils::BlockWithEffective;
 use crate::decompiler::{
-    evaluator::stackless::ExprNodeOperation, reconstruct::ast::ResultUsageType,
+    evaluator::stackless::expr_node::ExprNodeOperation, reconstruct::ast::ResultUsageType,
 };
 
 use crate::decompiler::reconstruct::{
-    DecompiledCodeItem, DecompiledCodeUnit, DecompiledCodeUnitRef, DecompiledExpr,
+    expr::DecompiledExpr, DecompiledCodeItem, DecompiledCodeUnitRef,
 };
 
 use super::super::utils::blocks_iter_with_last_effective_indicator;
@@ -17,14 +17,15 @@ use super::super::utils::blocks_iter_with_last_effective_indicator;
 pub(crate) fn rewrite_assert(
     unit: &DecompiledCodeUnitRef,
 ) -> Result<DecompiledCodeUnitRef, anyhow::Error> {
-    let mut new_unit = DecompiledCodeUnit::new();
+    let mut new_unit = unit.new_empty();
     let mut need_copy_exit = true;
 
     for BlockWithEffective {
         block: item,
         is_last_effective,
         ..
-    } in blocks_iter_with_last_effective_indicator(&unit.blocks) {
+    } in blocks_iter_with_last_effective_indicator(&unit.blocks)
+    {
         match item {
             DecompiledCodeItem::IfElseStatement {
                 cond,
@@ -42,9 +43,11 @@ pub(crate) fn rewrite_assert(
                         .collect();
 
                 if else_unit_effective_blocks.len() == 1
-                    && (use_as_result == &ResultUsageType::None || is_last_effective) {
+                    && (use_as_result == &ResultUsageType::None || is_last_effective)
+                {
                     if let DecompiledCodeItem::AbortStatement(expr) =
-                        &else_unit.blocks[else_unit_effective_blocks[0]] {
+                        &else_unit.blocks[else_unit_effective_blocks[0]]
+                    {
                         let rewritten_if_unit = rewrite_assert(if_unit)?;
 
                         new_unit.add(DecompiledCodeItem::Statement {

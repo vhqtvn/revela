@@ -115,7 +115,7 @@ impl<'a> Decompiler<'a> {
                 let struct_name_display = struct_name.display(env.symbol_pool());
                 let mut buf = String::new();
 
-                buf.push_str(utils::shortest_prefix(current_module, mid).as_str());
+                buf.push_str(utils::naming::shortest_prefix(current_module, mid).as_str());
                 buf.push_str(struct_name_display.to_string().as_str());
                 if !tys.is_empty() {
                     buf.push_str("<");
@@ -596,6 +596,7 @@ impl<'a> Decompiler<'a> {
                         &naming,
                     );
 
+                    println!("Decompiling function: {}", f.get_name_str());
                     let mut code_unit = sgen.generate(&self.optimizer_settings)?;
 
                     code_unit.add_indent(1);

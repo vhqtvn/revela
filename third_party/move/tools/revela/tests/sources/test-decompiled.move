@@ -2,7 +2,7 @@ module 0x12::test {
     struct Example has copy, drop {
         i: u64,
     }
-    
+
     public fun print(arg0: u64) : u64 {
         let v0 = arg0 + 1;
         Example{i: arg0 + 2};
@@ -27,6 +27,6 @@ module 0x12::test {
         assert!(v4 < 13, v4 - 10);
         v4 + 1
     }
-    
+
     // decompiled from Move bytecode v7
 }

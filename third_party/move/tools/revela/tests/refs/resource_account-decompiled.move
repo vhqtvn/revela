@@ -2,12 +2,12 @@ module 0x1::resource_account {
     struct Container has key {
         store: 0x1::simple_map::SimpleMap<address, 0x1::account::SignerCapability>,
     }
-    
+
     public entry fun create_resource_account(arg0: &signer, arg1: vector<u8>, arg2: vector<u8>) acquires Container {
         let (v0, v1) = 0x1::account::create_resource_account(arg0, arg1);
         rotate_account_authentication_key_and_store_capability(arg0, v0, v1, arg2);
     }
-    
+
     public entry fun create_resource_account_and_fund(arg0: &signer, arg1: vector<u8>, arg2: vector<u8>, arg3: u64) acquires Container {
         let (v0, v1) = 0x1::account::create_resource_account(arg0, arg1);
         let v2 = v0;
@@ -15,14 +15,14 @@ module 0x1::resource_account {
         0x1::coin::transfer<0x1::aptos_coin::AptosCoin>(arg0, 0x1::signer::address_of(&v2), arg3);
         rotate_account_authentication_key_and_store_capability(arg0, v2, v1, arg2);
     }
-    
+
     public entry fun create_resource_account_and_publish_package(arg0: &signer, arg1: vector<u8>, arg2: vector<u8>, arg3: vector<vector<u8>>) acquires Container {
         let (v0, v1) = 0x1::account::create_resource_account(arg0, arg1);
         let v2 = v0;
         0x1::code::publish_package_txn(&v2, arg2, arg3);
         rotate_account_authentication_key_and_store_capability(arg0, v2, v1, x"0000000000000000000000000000000000000000000000000000000000000000");
     }
-    
+
     public fun retrieve_resource_account_cap(arg0: &signer, arg1: address) : 0x1::account::SignerCapability acquires Container {
         assert!(exists<Container>(arg1), 0x1::error::not_found(1));
         let v0 = 0x1::signer::address_of(arg0);
@@ -37,7 +37,7 @@ module 0x1::resource_account {
         0x1::account::rotate_authentication_key_internal(arg0, x"0000000000000000000000000000000000000000000000000000000000000000");
         v4
     }
-    
+
     fun rotate_account_authentication_key_and_store_capability(arg0: &signer, arg1: signer, arg2: 0x1::account::SignerCapability, arg3: vector<u8>) acquires Container {
         let v0 = 0x1::signer::address_of(arg0);
         if (exists<Container>(v0)) {
@@ -55,6 +55,6 @@ module 0x1::resource_account {
         };
         0x1::account::rotate_authentication_key_internal(&arg1, v4);
     }
-    
+
     // decompiled from Move bytecode v7
 }

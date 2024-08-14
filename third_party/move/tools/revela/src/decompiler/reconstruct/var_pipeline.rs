@@ -32,6 +32,7 @@ where
 {
     flow_id: usize,
     flow_id_pool: Rc<RefCell<usize>>,
+    #[allow(dead_code)]
     time_container_id: usize,
     time_container_id_pool: Rc<RefCell<usize>>,
     var: HashMap<usize, Var>,
@@ -84,6 +85,7 @@ where
         })
     }
 
+    #[allow(dead_code)]
     pub fn time_id(&self) -> usize {
         self.time_container_id
     }

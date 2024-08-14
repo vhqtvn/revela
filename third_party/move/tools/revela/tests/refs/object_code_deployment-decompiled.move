@@ -2,25 +2,25 @@ module 0x1::object_code_deployment {
     struct Freeze has drop, store {
         object_address: address,
     }
-    
+
     struct ManagingRefs has key {
         extend_ref: 0x1::object::ExtendRef,
     }
-    
+
     struct Publish has drop, store {
         object_address: address,
     }
-    
+
     struct Upgrade has drop, store {
         object_address: address,
     }
-    
+
     public entry fun freeze_code_object(arg0: &signer, arg1: 0x1::object::Object<0x1::code::PackageRegistry>) {
         0x1::code::freeze_code_object(arg0, arg1);
         let v0 = Freeze{object_address: 0x1::object::object_address<0x1::code::PackageRegistry>(&arg1)};
         0x1::event::emit<Freeze>(v0);
     }
-    
+
     public entry fun publish(arg0: &signer, arg1: vector<u8>, arg2: vector<vector<u8>>) {
         assert!(0x1::features::is_object_code_deployment_enabled(), 0x1::error::unavailable(1));
         let v0 = 0x1::account::get_sequence_number(0x1::signer::address_of(arg0)) + 1;
@@ -38,7 +38,7 @@ module 0x1::object_code_deployment {
         let v8 = ManagingRefs{extend_ref: 0x1::object::generate_extend_ref(v4)};
         move_to<ManagingRefs>(v6, v8);
     }
-    
+
     public entry fun upgrade(arg0: &signer, arg1: vector<u8>, arg2: vector<vector<u8>>, arg3: 0x1::object::Object<0x1::code::PackageRegistry>) acquires ManagingRefs {
         let v0 = 0x1::object::is_owner<0x1::code::PackageRegistry>(arg3, 0x1::signer::address_of(arg0));
         assert!(v0, 0x1::error::permission_denied(2));
@@ -50,6 +50,6 @@ module 0x1::object_code_deployment {
         let v4 = Upgrade{object_address: 0x1::signer::address_of(v3)};
         0x1::event::emit<Upgrade>(v4);
     }
-    
+
     // decompiled from Move bytecode v7
 }

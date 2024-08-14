@@ -4,8 +4,14 @@
 
 use std::mem::MaybeUninit;
 
+use anyhow::Ok;
 use move_model::ty::Type;
 use move_stackless_bytecode::stackless_bytecode::Operation;
+
+use crate::decompiler::cfg::{
+    algo::blocks_stackless::AnnotatedBytecode, metadata::WithMetadata,
+    stackless_variants_test_simplifier::StacklessVariantTestVariantsData,
+};
 
 use super::{Expr, ExprNodeOperation, ExprNodeRef, ReturnValueHint, StacklessEvaluationContext};
 
@@ -18,6 +24,7 @@ pub trait OperationEvaluator {
     fn evaluate(
         &self,
         ctx: &StacklessEvaluationContext,
+        bytecode: &AnnotatedBytecode,
         args: &Vec<Expr>,
         dst_types: &Vec<Option<ReturnValueHint>>,
     ) -> Result<OperationEvaluatorResult, anyhow::Error>;
@@ -27,6 +34,7 @@ impl OperationEvaluator for &Operation {
     fn evaluate(
         &self,
         ctx: &StacklessEvaluationContext,
+        bytecode: &AnnotatedBytecode,
         args: &Vec<Expr>,
         dst_types: &Vec<Option<ReturnValueHint>>,
     ) -> Result<OperationEvaluatorResult, anyhow::Error> {
@@ -117,6 +125,109 @@ impl OperationEvaluator for &Operation {
 
                     _ => unreachable!(),
                 }
+            }
+            Operation::PackVariant(mid, sid, vid, types)
+            | Operation::UnpackVariant(mid, sid, vid, types) => {
+                let module_env = ctx.func_env.module_env.env.get_module(*mid);
+                let struct_env = module_env.get_struct(*sid);
+
+                let enum_name = shortest_name(ctx, mid, struct_name(&struct_env));
+
+                let variant_name = vid.display(struct_env.symbol_pool()).to_string();
+
+                let keys = struct_env
+                    .get_fields_of_variant(*vid)
+                    .map(|x| x.get_name().display(struct_env.symbol_pool()).to_string())
+                    .collect::<Vec<_>>();
+
+                match self {
+                    Operation::PackVariant(..) => {
+                        if keys.len() != args.len() {
+                            return Err(anyhow::anyhow!(
+                                "Expected {} arguments, got {}",
+                                keys.len(),
+                                args.len(),
+                            ));
+                        }
+                        Ok(OperationEvaluatorResult {
+                            cannot_keep: false,
+                            expr: ExprNodeOperation::VariantPack(
+                                enum_name,
+                                variant_name,
+                                keys.iter()
+                                    .zip(args.iter())
+                                    .map(|(k, x)| (k.clone(), x.value_copied()))
+                                    .collect(),
+                                types.clone(),
+                            )
+                            .to_expr(),
+                        })
+                    }
+
+                    Operation::UnpackVariant(..) => Ok(OperationEvaluatorResult {
+                        cannot_keep: false,
+                        expr: ExprNodeOperation::VariantUnpack(
+                            enum_name,
+                            variant_name,
+                            keys,
+                            only_one(args, "unpack_variant")?,
+                            types.clone(),
+                        )
+                        .to_expr(),
+                    }),
+
+                    _ => unreachable!(),
+                }
+            }
+            Operation::TestVariant(mid, sid, vid, types) => {
+                let module_env = ctx.func_env.module_env.env.get_module(*mid);
+                let struct_env = module_env.get_struct(*sid);
+
+                let enum_name = shortest_name(ctx, mid, struct_name(&struct_env));
+
+                let variants =
+                    if let Some(meta) = bytecode.meta().get::<StacklessVariantTestVariantsData>() {
+                        meta.variants.clone()
+                    } else {
+                        vec![vid.clone()]
+                    };
+
+                let variant_names: Vec<_> = variants
+                    .iter()
+                    .map(|v| v.display(struct_env.symbol_pool()).to_string())
+                    .collect();
+
+                Ok(OperationEvaluatorResult {
+                    cannot_keep: false,
+                    expr: ExprNodeOperation::VariantTest(
+                        enum_name,
+                        variant_names,
+                        only_one(args, "test_variant")?,
+                        types.clone(),
+                    )
+                    .to_expr(),
+                })
+            }
+            Operation::BorrowVariantField(mid, sid, vid, _types, offset) => {
+                assert!(!vid.is_empty());
+                let arg = only_one(args, "borrow_variant_field")?;
+                let module_env = ctx.func_env.module_env.env.get_module(*mid);
+                let struct_env = module_env.get_struct(*sid);
+                let field_env =
+                    struct_env.get_field_by_offset_optional_variant(Some(vid[0]), *offset);
+                let field_name = field_env
+                    .get_name()
+                    .display(struct_env.symbol_pool())
+                    .to_string();
+
+                Ok(OperationEvaluatorResult {
+                    cannot_keep: false,
+                    expr: ExprNodeOperation::BorrowLocal(
+                        ExprNodeOperation::Field(arg, field_name).to_node(),
+                        is_mutable_reference(dst_types)?,
+                    )
+                    .to_expr(),
+                })
             }
 
             Operation::MoveFrom(mid, sid, types)
@@ -292,21 +403,17 @@ impl OperationEvaluator for &Operation {
             | Operation::Havoc(..) => {
                 Err(anyhow::anyhow!("Specifications opcode is not supported"))
             }
-            Operation::TestVariant(_, _, _, _) => todo!(),
-            Operation::PackVariant(_, _, _, _) => todo!(),
-            Operation::UnpackVariant(_, _, _, _) => todo!(),
-            Operation::BorrowVariantField(_, _, _, _, _) => todo!(),
         }
     }
 }
 
-fn struct_name(struct_env: &move_model::model::StructEnv<'_>) -> String {
+pub fn struct_name(struct_env: &move_model::model::StructEnv<'_>) -> String {
     struct_env
         .get_name()
         .display(struct_env.symbol_pool())
         .to_string()
 }
-fn shortest_name(
+pub fn shortest_name(
     ctx: &StacklessEvaluationContext<'_>,
     mid: &move_model::model::ModuleId,
     name: String,

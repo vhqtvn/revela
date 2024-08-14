@@ -8,6 +8,6 @@ module 0x12::tc3 {
         };
         v0 + v1 + 11
     }
-    
+
     // decompiled from Move bytecode v7
 }

@@ -39,8 +39,16 @@ pub(crate) fn remove_non_source_blocks(
                     body,
                 });
             }
-
-            _ => {
+            DecompiledCodeItem::ReturnStatement(..)
+            | DecompiledCodeItem::AbortStatement(..)
+            | DecompiledCodeItem::BreakStatement
+            | DecompiledCodeItem::ContinueStatement
+            | DecompiledCodeItem::CommentStatement(..)
+            | DecompiledCodeItem::PreDeclareStatement { .. }
+            | DecompiledCodeItem::AssignStatement { .. }
+            | DecompiledCodeItem::AssignTupleStatement { .. }
+            | DecompiledCodeItem::AssignStructureStatement { .. }
+            | DecompiledCodeItem::Statement { .. } => {
                 new_blocks.push(item.clone());
             }
         }

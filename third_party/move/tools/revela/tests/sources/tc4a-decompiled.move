@@ -5,6 +5,6 @@ module 0x12::tc4a {
         };
         5
     }
-    
+
     // decompiled from Move bytecode v7
 }

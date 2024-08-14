@@ -35,7 +35,8 @@ pub(crate) fn cleanup_tail_exit(unit: &mut DecompiledCodeUnitRef) -> Result<(), 
             use_as_result,
             ..
         },
-    )) = last_effective_statement_mut(&mut unit.blocks) {
+    )) = last_effective_statement_mut(&mut unit.blocks)
+    {
         if result_variables.len() > 0 && (result_variables == &unit.result_variables) {
             unit.exit = None;
             result_variables.clear();

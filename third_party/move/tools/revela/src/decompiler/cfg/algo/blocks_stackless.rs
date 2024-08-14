@@ -42,7 +42,6 @@ impl BlockContentTrait for StacklessBlockContent {}
 pub fn split_basic_blocks_stackless_bytecode(
     insts: &[Bytecode],
 ) -> Result<Vec<StacklessBasicBlock>, anyhow::Error> {
-
     let mut block_id_from_label = HashMap::<Label, usize>::new();
     let mut bbs = allocate_basic_blocks(insts, &mut block_id_from_label)?;
     link_basic_blocks(insts, &mut bbs, block_id_from_label)?;
@@ -62,32 +61,32 @@ fn update_block_var_usage(bbs: &mut [BasicBlock<usize, StacklessBlockContent>]) 
                     for src in srcs {
                         block.has_read_variables.insert(src.clone());
                     }
-                },
+                }
                 Bytecode::Ret(_, srcs) => {
                     for src in srcs {
                         block.has_read_variables.insert(src.clone());
                     }
-                },
+                }
                 Bytecode::Abort(_, src) => {
                     block.has_read_variables.insert(src.clone());
-                },
+                }
                 Bytecode::Branch(_, _, _, cond) => {
                     block.has_read_variables.insert(cond.clone());
-                },
-                Bytecode::Jump(_, _) => {},
-                Bytecode::Label(_, _) => {},
+                }
+                Bytecode::Jump(_, _) => {}
+                Bytecode::Label(_, _) => {}
                 Bytecode::Assign(_, dst, src, _) => {
                     block.has_assignment_variables.insert(dst.clone());
                     block.has_read_variables.insert(src.clone());
-                },
+                }
                 Bytecode::Load(_, dst, _) => {
                     block.has_assignment_variables.insert(dst.clone());
                 }
-                Bytecode::Nop(_) |
-                Bytecode::SaveMem(_, _, _) |
-                Bytecode::SaveSpecVar(_, _, _) |
-                Bytecode::SpecBlock(_, _) |
-                Bytecode::Prop(_, _, _) => {}               
+                Bytecode::Nop(_)
+                | Bytecode::SaveMem(_, _, _)
+                | Bytecode::SaveSpecVar(_, _, _)
+                | Bytecode::SpecBlock(_, _)
+                | Bytecode::Prop(_, _, _) => {}
             }
         }
     }
@@ -184,14 +183,14 @@ fn link_basic_blocks(
         match &last_inst.bytecode {
             Bytecode::Branch(a, if_lbl, else_lbl, _cond) => {
                 block.next = Terminator::IfElse {
-                    if_block: get(
+                    if_block: BranchTarget::unknown(get(
                         if_lbl,
                         e!("Branch inst {} has invalid if label", a.as_usize()),
-                    )?,
-                    else_block: get(
+                    )?),
+                    else_block: BranchTarget::unknown(get(
                         else_lbl,
                         e!("Branch inst {} has invalid else label", a.as_usize()),
-                    )?,
+                    )?),
                 };
             }
             Bytecode::Jump(a, dest) => {

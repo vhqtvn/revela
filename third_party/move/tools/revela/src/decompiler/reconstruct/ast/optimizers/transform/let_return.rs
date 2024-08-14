@@ -5,7 +5,7 @@
 use crate::decompiler::reconstruct::ast::ResultUsageType;
 
 use crate::decompiler::reconstruct::{
-    DecompiledCodeItem, DecompiledCodeUnit, DecompiledExpr,
+    expr::DecompiledExpr, DecompiledCodeItem, DecompiledCodeUnit,
 };
 
 use super::super::utils::{last_effective_statement_mut, last_effective_statements};
@@ -60,13 +60,14 @@ fn check_let_return(blocks: &Vec<DecompiledCodeItem>) -> Option<(usize, Box<Deco
                 value,
                 is_decl: true,
             },
-
             DecompiledCodeItem::ReturnStatement(expr),
-        ) = (a, b) {
+        ) = (a, b)
+        {
             if expr
                 .is_single_variable_expr()
                 .map(|x| x == *variable)
-                .unwrap_or(false) {
+                .unwrap_or(false)
+            {
                 // as the block is returned, current_exit can be ignored
                 return Some((aidx, value.clone()));
             }
@@ -79,11 +80,13 @@ fn check_let_return(blocks: &Vec<DecompiledCodeItem>) -> Option<(usize, Box<Deco
                 is_decl: true,
             },
             DecompiledCodeItem::ReturnStatement(expr),
-        ) = (a, b) {
+        ) = (a, b)
+        {
             if expr
                 .is_single_or_tuple_variable_expr()
                 .map(|x| &x == variables)
-                .unwrap_or(false) {
+                .unwrap_or(false)
+            {
                 // as the block is returned, current_exit can be ignored
                 return Some((aidx, value.clone()));
             }
@@ -106,13 +109,15 @@ fn check_let_exit(
             variable,
             value,
             is_decl: true,
-        } = a {
+        } = a
+        {
             if current_exit
                 .as_ref()
                 .unwrap()
                 .is_single_variable_expr()
                 .map(|x| &x == variable)
-                .unwrap_or(false) {
+                .unwrap_or(false)
+            {
                 return Some((aidx, value.clone()));
             }
         }
@@ -121,14 +126,16 @@ fn check_let_exit(
             variables,
             value,
             is_decl: true,
-        } = a {
+        } = a
+        {
             if variables.len() > 0
                 && current_exit
                     .as_ref()
                     .unwrap()
                     .is_single_or_tuple_variable_expr()
                     .map(|x| &x == variables)
-                    .unwrap_or(false) {
+                    .unwrap_or(false)
+            {
                 return Some((aidx, value.clone()));
             }
         }
@@ -146,19 +153,29 @@ fn update_let_if_exit(
             result_variables,
             use_as_result,
             ..
-        } = stmt {
-            if result_variables.len() == 0 {
-                return;
-            }
-
-            if use_as_result != &ResultUsageType::None {
-                return;
+        } = stmt
+        {
+            match use_as_result {
+                ResultUsageType::None => {
+                    if result_variables.len() == 0 {
+                        return;
+                    }
+                }
+                ResultUsageType::BlockResult => {
+                    debug_assert!(result_variables.len() == 0);
+                }
+                _ => {}
             }
 
             if current_exit
                 .as_ref()
-                .map(|x| x.is_single_or_tuple_variable_expr().map(|x| &x == result_variables).unwrap_or(false))                
-                .unwrap_or(false) {
+                .map(|x| {
+                    x.is_single_or_tuple_variable_expr()
+                        .map(|x| &x == result_variables)
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false)
+            {
                 *current_exit = None;
                 result_variables.clear();
                 *use_as_result = ResultUsageType::BlockResult;
@@ -176,7 +193,8 @@ pub(crate) fn rewrite_let_if_return(unit: &mut DecompiledCodeUnit) -> Result<(),
         // the last statement is now if statement
 
         if let DecompiledCodeItem::IfElseStatement { use_as_result, .. } =
-            unit.blocks.last_mut().unwrap() {
+            unit.blocks.last_mut().unwrap()
+        {
             *use_as_result = return_type;
         } else {
             unreachable!();
@@ -223,12 +241,14 @@ fn check_let_if_return(blocks: &Vec<DecompiledCodeItem>) -> Option<(usize, Resul
             },
             DecompiledCodeItem::ReturnStatement(expr)
             | DecompiledCodeItem::AbortStatement(expr),
-        ) = (a, b) {
+        ) = (a, b)
+        {
             if result_variables.len() > 0
                 && expr
                     .is_single_or_tuple_variable_expr()
                     .map(|x| &x == result_variables)
-                    .unwrap_or(false) {
+                    .unwrap_or(false)
+            {
                 return match blocks[blocks.len() - 1] {
                     DecompiledCodeItem::ReturnStatement(_) => {
                         Some((if_index, ResultUsageType::Return))

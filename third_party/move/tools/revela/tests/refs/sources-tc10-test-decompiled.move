@@ -17,6 +17,6 @@ module 0x12::tc10 {
         };
         v0 + v2 + 99
     }
-    
+
     // decompiled from Move bytecode v7
 }

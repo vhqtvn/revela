@@ -2,11 +2,11 @@
 // Copyright © Aptos Foundation
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashSet, fmt::Display};
+use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use super::metadata::WithMetadata;
 
-pub trait BlockIdentifierTrait: PartialEq + Eq + Copy {}
+pub trait BlockIdentifierTrait: PartialEq + Eq + Copy + Hash {}
 pub trait BlockContentTrait: Clone + Default {}
 
 pub trait DecompileDisplayContext<
@@ -19,7 +19,36 @@ pub trait DecompileDisplayContext<
     fn add_lines(&mut self, lines: &str);
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+pub enum BranchType {
+    #[default]
+    Unknown,
+    Continue,
+    Break,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+pub struct BranchTarget<BlockIdentifier: BlockIdentifierTrait> {
+    pub(crate) target: BlockIdentifier,
+    pub(crate) branch_type: BranchType,
+}
+impl<BlockIdentifier: BlockIdentifierTrait> BranchTarget<BlockIdentifier> {
+    pub(crate) fn unknown(e: BlockIdentifier) -> BranchTarget<BlockIdentifier> {
+        BranchTarget {
+            target: e,
+            branch_type: BranchType::Unknown,
+        }
+    }
+
+    pub(crate) fn with_target(&self, target: BlockIdentifier) -> BranchTarget<BlockIdentifier> {
+        BranchTarget {
+            target,
+            branch_type: self.branch_type.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub enum Terminator<BlockIdentifier: BlockIdentifierTrait> {
     // no terminator
     #[default]
@@ -29,8 +58,8 @@ pub enum Terminator<BlockIdentifier: BlockIdentifierTrait> {
     Abort,
     // branches
     IfElse {
-        if_block: BlockIdentifier,
-        else_block: BlockIdentifier,
+        if_block: BranchTarget<BlockIdentifier>,
+        else_block: BranchTarget<BlockIdentifier>,
     },
     Branch {
         target: BlockIdentifier,
@@ -38,7 +67,7 @@ pub enum Terminator<BlockIdentifier: BlockIdentifierTrait> {
     While {
         inner_block: BlockIdentifier,
         outer_block: BlockIdentifier,
-        content_blocks: HashSet<BlockIdentifier>,
+        content_blocks: Vec<BlockIdentifier>,
     },
     Break {
         target: BlockIdentifier,
@@ -52,15 +81,7 @@ pub enum Terminator<BlockIdentifier: BlockIdentifierTrait> {
 pub struct BasicBlock<Identifier: BlockIdentifierTrait, Content: BlockContentTrait> {
     // block index
     pub(crate) idx: usize,
-    // the code offset of the first instruction in the bytecode sequence
-    // usize::MAX means this block is not in the bytecode sequence
-    pub(crate) offset: usize,
-    // priority of this block in the topological order, the larger the value the later it is
-    pub(crate) topo_priority: Option<usize>,
-    // set of blocks that this block is after in the topological order
-    pub(crate) topo_after: HashSet<usize>,
-    // set of blocks that this block is before in the topological order
-    pub(crate) topo_before: HashSet<usize>,
+
     pub(crate) content: Content,
     // next points to the next blocks
     // conditional branching will be (true, false)
@@ -75,6 +96,8 @@ pub struct BasicBlock<Identifier: BlockIdentifierTrait, Content: BlockContentTra
 
     pub(crate) has_assignment_variables: HashSet<usize>,
     pub(crate) has_read_variables: HashSet<usize>,
+
+    pub(crate) is_dummy_dispatch_block: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -117,7 +140,7 @@ impl<BlockIdentifier: BlockIdentifierTrait> Terminator<BlockIdentifier> {
             Terminator::IfElse {
                 if_block,
                 else_block,
-            } => vec![if_block, else_block],
+            } => vec![&if_block.target, &else_block.target],
             Terminator::Branch { target } => vec![target],
             Terminator::While {
                 inner_block,
@@ -130,13 +153,9 @@ impl<BlockIdentifier: BlockIdentifierTrait> Terminator<BlockIdentifier> {
     }
 
     pub(crate) fn is_terminated(&self) -> bool {
-        matches!(
-            self,
-            Terminator::Ret
-                | Terminator::Abort
-        )
+        matches!(self, Terminator::Ret | Terminator::Abort)
     }
-    
+
     pub(crate) fn is_terminated_in_loop(&self) -> bool {
         matches!(
             self,
@@ -181,10 +200,6 @@ impl<BlockIdentifier: BlockIdentifierTrait, BlockContent: BlockContentTrait>
     pub fn new(idx: usize) -> Self {
         BasicBlock {
             idx,
-            offset: idx,
-            topo_priority: None,
-            topo_after: Default::default(),
-            topo_before: Default::default(),
             content: Default::default(),
             next: Terminator::Normal,
             unconditional_loop_entry: None,
@@ -192,9 +207,11 @@ impl<BlockIdentifier: BlockIdentifierTrait, BlockContent: BlockContentTrait>
             short_circuit_terminator: None,
             has_assignment_variables: Default::default(),
             has_read_variables: Default::default(),
+            is_dummy_dispatch_block: false,
         }
     }
 
+    #[allow(dead_code)]
     pub fn referenced_variables_iter(&self) -> impl Iterator<Item = &usize> {
         self.has_assignment_variables
             .iter()
@@ -242,14 +259,12 @@ impl<BlockIdentifier: BlockIdentifierTrait, BlockContent: BlockContentTrait>
             HyperBlock::ConnectedBlocks(blocks) => {
                 Box::new(blocks.iter_mut().map(|x| x.inner_mut()))
             }
-
             HyperBlock::IfElseBlocks { if_unit, else_unit } => Box::new(
                 if_unit
                     .inner_mut()
                     .content_iter_mut()
                     .chain(else_unit.inner_mut().content_iter_mut()),
             ),
-
             HyperBlock::WhileBlocks { inner, outer, .. } => Box::new(
                 Box::new(inner.inner_mut().content_iter_mut())
                     .chain(outer.inner_mut().content_iter_mut()),
@@ -268,7 +283,6 @@ impl<BlockIdentifier: BlockIdentifierTrait, BlockContent: BlockContentTrait>
                     .content_iter()
                     .chain(else_unit.inner().content_iter()),
             ),
-
             HyperBlock::WhileBlocks { inner, outer, .. } => {
                 Box::new(Box::new(inner.inner().content_iter()).chain(outer.inner().content_iter()))
             }
@@ -297,7 +311,6 @@ impl<BlockIdentifier: BlockIdentifierTrait, BlockContent: BlockContentTrait>
 
                 ctx.add_lines("}");
             }
-
             HyperBlock::WhileBlocks {
                 inner,
                 outer,
@@ -326,11 +339,9 @@ impl<BlockIdentifier: BlockIdentifierTrait, BlockContent: BlockContentTrait>
             HyperBlock::ConnectedBlocks(blocks) => blocks
                 .iter()
                 .any(|block| matches!(block.inner().next, Terminator::Abort)),
-
             HyperBlock::IfElseBlocks { if_unit, else_unit } => {
                 if_unit.inner().is_abort() && else_unit.inner().is_abort()
             }
-
             HyperBlock::WhileBlocks {
                 inner,
                 outer,
@@ -345,11 +356,9 @@ impl<BlockIdentifier: BlockIdentifierTrait, BlockContent: BlockContentTrait>
             HyperBlock::ConnectedBlocks(blocks) => blocks
                 .iter()
                 .any(|block| matches!(block.inner().next, Terminator::Ret | Terminator::Abort)),
-
             HyperBlock::IfElseBlocks { if_unit, else_unit } => {
                 if_unit.inner().is_terminated() && else_unit.inner().is_terminated()
             }
-
             HyperBlock::WhileBlocks {
                 inner,
                 outer,
@@ -361,9 +370,9 @@ impl<BlockIdentifier: BlockIdentifierTrait, BlockContent: BlockContentTrait>
 
     pub fn is_terminated_in_loop(&self) -> bool {
         match self {
-            HyperBlock::ConnectedBlocks(blocks) => blocks.iter().any(|block| {
-                block.inner().next.is_terminated_in_loop()
-            }),
+            HyperBlock::ConnectedBlocks(blocks) => blocks
+                .iter()
+                .any(|block| block.inner().next.is_terminated_in_loop()),
 
             HyperBlock::IfElseBlocks { if_unit, else_unit } => {
                 if_unit.inner().is_terminated_in_loop() && else_unit.inner().is_terminated_in_loop()

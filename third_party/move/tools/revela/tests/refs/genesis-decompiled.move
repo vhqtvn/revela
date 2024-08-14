@@ -3,7 +3,7 @@ module 0x1::genesis {
         account_address: address,
         balance: u64,
     }
-    
+
     struct EmployeeAccountMap has copy, drop {
         accounts: vector<address>,
         validator: ValidatorConfigurationWithCommission,
@@ -11,7 +11,7 @@ module 0x1::genesis {
         vesting_schedule_denominator: u64,
         beneficiary_resetter: address,
     }
-    
+
     struct ValidatorConfiguration has copy, drop {
         owner_address: address,
         operator_address: address,
@@ -22,13 +22,13 @@ module 0x1::genesis {
         network_addresses: vector<u8>,
         full_node_network_addresses: vector<u8>,
     }
-    
+
     struct ValidatorConfigurationWithCommission has copy, drop {
         validator_config: ValidatorConfiguration,
         commission_percentage: u64,
         join_during_genesis: bool,
     }
-    
+
     fun create_account(arg0: &signer, arg1: address, arg2: u64) : signer {
         if (0x1::account::exists_at(arg1)) {
             0x1::create_signer::create_signer(arg1)
@@ -39,7 +39,7 @@ module 0x1::genesis {
             v1
         }
     }
-    
+
     fun initialize(arg0: vector<u8>, arg1: u8, arg2: u64, arg3: vector<u8>, arg4: vector<u8>, arg5: u64, arg6: u64, arg7: u64, arg8: u64, arg9: bool, arg10: u64, arg11: u64, arg12: u64) {
         let (v0, v1) = 0x1::account::create_framework_reserved_account(@0x1);
         let v2 = v0;
@@ -71,11 +71,11 @@ module 0x1::genesis {
         0x1::state_storage::initialize(&v2);
         0x1::timestamp::set_time_has_started(&v2);
     }
-    
+
     fun set_genesis_end(arg0: &signer) {
         0x1::chain_status::set_genesis_end(arg0);
     }
-    
+
     fun create_accounts(arg0: &signer, arg1: vector<AccountMap>) {
         let v0 = 0x1::vector::empty<address>();
         let v1 = &arg1;
@@ -90,7 +90,7 @@ module 0x1::genesis {
             v2 = v2 + 1;
         };
     }
-    
+
     fun create_employee_validators(arg0: u64, arg1: u64, arg2: vector<EmployeeAccountMap>) {
         let v0 = 0x1::vector::empty<address>();
         let v1 = &arg2;
@@ -133,7 +133,7 @@ module 0x1::genesis {
             v2 = v2 + 1;
         };
     }
-    
+
     fun create_initialize_validator(arg0: &signer, arg1: &ValidatorConfigurationWithCommission, arg2: bool) {
         let v0 = &arg1.validator_config;
         let v1 = create_account(arg0, v0.owner_address, v0.stake_amount);
@@ -153,25 +153,24 @@ module 0x1::genesis {
             initialize_validator(v2, v0);
         };
     }
-    
+
     fun create_initialize_validators(arg0: &signer, arg1: vector<ValidatorConfiguration>) {
         let v0 = 0x1::vector::empty<ValidatorConfigurationWithCommission>();
-        let v1 = arg1;
-        let v2 = 0x1::vector::length<ValidatorConfiguration>(&v1);
-        while (v2 > 0) {
-            let v3 = 0x1::vector::pop_back<ValidatorConfiguration>(&mut v1);
-            let v4 = ValidatorConfigurationWithCommission{
-                validator_config      : v3, 
-                commission_percentage : 0, 
+        let v1 = 0x1::vector::length<ValidatorConfiguration>(&arg1);
+        while (v1 > 0) {
+            let v2 = 0x1::vector::pop_back<ValidatorConfiguration>(&mut arg1);
+            let v3 = ValidatorConfigurationWithCommission{
+                validator_config      : v2,
+                commission_percentage : 0,
                 join_during_genesis   : true,
             };
-            0x1::vector::push_back<ValidatorConfigurationWithCommission>(&mut v0, v4);
-            v2 = v2 - 1;
+            0x1::vector::push_back<ValidatorConfigurationWithCommission>(&mut v0, v3);
+            v1 = v1 - 1;
         };
-        0x1::vector::destroy_empty<ValidatorConfiguration>(v1);
+        0x1::vector::destroy_empty<ValidatorConfiguration>(arg1);
         create_initialize_validators_with_commission(arg0, false, v0);
     }
-    
+
     fun create_initialize_validators_with_commission(arg0: &signer, arg1: bool, arg2: vector<ValidatorConfigurationWithCommission>) {
         let v0 = &arg2;
         let v1 = 0;
@@ -183,7 +182,7 @@ module 0x1::genesis {
         0x1::aptos_coin::destroy_mint_cap(arg0);
         0x1::stake::on_new_epoch();
     }
-    
+
     fun initialize_aptos_coin(arg0: &signer) {
         let (v0, v1) = 0x1::aptos_coin::initialize(arg0);
         0x1::coin::create_coin_conversion_map(arg0);
@@ -192,7 +191,7 @@ module 0x1::genesis {
         0x1::transaction_fee::store_aptos_coin_burn_cap(arg0, v0);
         0x1::transaction_fee::store_aptos_coin_mint_cap(arg0, v1);
     }
-    
+
     fun initialize_core_resources_and_aptos_coin(arg0: &signer, arg1: vector<u8>) {
         let (v0, v1) = 0x1::aptos_coin::initialize(arg0);
         0x1::coin::create_coin_conversion_map(arg0);
@@ -205,7 +204,7 @@ module 0x1::genesis {
         0x1::aptos_account::register_apt(&v2);
         0x1::aptos_coin::configure_accounts_for_test(arg0, &v2, v1);
     }
-    
+
     fun initialize_validator(arg0: address, arg1: &ValidatorConfiguration) {
         let v0 = 0x1::create_signer::create_signer(arg1.operator_address);
         let v1 = &v0;
@@ -214,6 +213,6 @@ module 0x1::genesis {
         0x1::stake::update_network_and_fullnode_addresses(v1, arg0, arg1.network_addresses, v2);
         0x1::stake::join_validator_set_internal(v1, arg0);
     }
-    
+
     // decompiled from Move bytecode v7
 }

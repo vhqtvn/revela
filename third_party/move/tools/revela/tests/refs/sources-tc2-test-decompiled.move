@@ -7,6 +7,6 @@ module 0x12::tc2 {
         };
         v1 + 11
     }
-    
+
     // decompiled from Move bytecode v7
 }

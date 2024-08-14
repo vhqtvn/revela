@@ -4,11 +4,11 @@ module 0x1::randomness {
         round: u64,
         seed: 0x1::option::Option<vector<u8>>,
     }
-    
+
     struct RandomnessGeneratedEvent has drop, store {
         dummy_field: bool,
     }
-    
+
     public fun bytes(arg0: u64) : vector<u8> acquires PerBlockRandomness {
         let v0 = 0x1::vector::empty<u8>();
         let v1 = 0;
@@ -24,21 +24,21 @@ module 0x1::randomness {
         0x1::event::emit<RandomnessGeneratedEvent>(v3);
         v0
     }
-    
+
     native fun fetch_and_increment_txn_counter() : vector<u8>;
     public fun initialize(arg0: &signer) {
         0x1::system_addresses::assert_aptos_framework(arg0);
         if (exists<PerBlockRandomness>(@0x1)) {
         } else {
             let v0 = PerBlockRandomness{
-                epoch : 0, 
-                round : 0, 
+                epoch : 0,
+                round : 0,
                 seed  : 0x1::option::none<vector<u8>>(),
             };
             move_to<PerBlockRandomness>(arg0, v0);
         };
     }
-    
+
     native fun is_unbiasable() : bool;
     fun next_32_bytes() : vector<u8> acquires PerBlockRandomness {
         assert!(is_unbiasable(), 1);
@@ -49,7 +49,7 @@ module 0x1::randomness {
         0x1::vector::append<u8>(&mut v0, fetch_and_increment_txn_counter());
         0x1::hash::sha3_256(v0)
     }
-    
+
     public(friend) fun on_new_block(arg0: &signer, arg1: u64, arg2: u64, arg3: 0x1::option::Option<vector<u8>>) acquires PerBlockRandomness {
         0x1::system_addresses::assert_vm(arg0);
         if (exists<PerBlockRandomness>(@0x1)) {
@@ -59,7 +59,7 @@ module 0x1::randomness {
             v0.seed = arg3;
         };
     }
-    
+
     public fun permutation(arg0: u64) : vector<u64> acquires PerBlockRandomness {
         let v0 = RandomnessGeneratedEvent{dummy_field: false};
         0x1::event::emit<RandomnessGeneratedEvent>(v0);
@@ -80,26 +80,27 @@ module 0x1::randomness {
         };
         v1
     }
-    
+
     fun safe_add_mod(arg0: u256, arg1: u256, arg2: u256) : u256 {
         let v0 = arg2 - arg1;
-        let v1 = if (arg0 < v0) {
+        let v1 = arg0 < v0;
+        let v2 = if (v1) {
             arg0 + arg1
         } else {
             arg0 - v0
         };
-        let v2 = if (v3) {
+        let v3 = if (v1) {
             arg0 + arg1
         } else {
             arg0 - v0
         };
-        take_first(v1, v2)
+        take_first(v2, v3)
     }
-    
+
     fun take_first(arg0: u256, arg1: u256) : u256 {
         arg0
     }
-    
+
     public fun u128_integer() : u128 acquires PerBlockRandomness {
         let v0 = next_32_bytes();
         let v1 = 0;
@@ -113,14 +114,14 @@ module 0x1::randomness {
         0x1::event::emit<RandomnessGeneratedEvent>(v4);
         v1
     }
-    
+
     public fun u128_range(arg0: u128, arg1: u128) : u128 acquires PerBlockRandomness {
         let v0 = u256_integer_internal();
         let v1 = RandomnessGeneratedEvent{dummy_field: false};
         0x1::event::emit<RandomnessGeneratedEvent>(v1);
         arg0 + ((v0 % ((arg1 - arg0) as u256)) as u128)
     }
-    
+
     public fun u16_integer() : u16 acquires PerBlockRandomness {
         let v0 = next_32_bytes();
         let v1 = 0;
@@ -134,20 +135,20 @@ module 0x1::randomness {
         0x1::event::emit<RandomnessGeneratedEvent>(v4);
         v1
     }
-    
+
     public fun u16_range(arg0: u16, arg1: u16) : u16 acquires PerBlockRandomness {
         let v0 = u256_integer_internal();
         let v1 = RandomnessGeneratedEvent{dummy_field: false};
         0x1::event::emit<RandomnessGeneratedEvent>(v1);
         arg0 + ((v0 % ((arg1 - arg0) as u256)) as u16)
     }
-    
+
     public fun u256_integer() : u256 acquires PerBlockRandomness {
         let v0 = RandomnessGeneratedEvent{dummy_field: false};
         0x1::event::emit<RandomnessGeneratedEvent>(v0);
         u256_integer_internal()
     }
-    
+
     fun u256_integer_internal() : u256 acquires PerBlockRandomness {
         let v0 = next_32_bytes();
         let v1 = 0;
@@ -159,7 +160,7 @@ module 0x1::randomness {
         };
         v1
     }
-    
+
     public fun u256_range(arg0: u256, arg1: u256) : u256 acquires PerBlockRandomness {
         let v0 = arg1 - arg0;
         let v1 = u256_integer_internal();
@@ -174,7 +175,7 @@ module 0x1::randomness {
         0x1::event::emit<RandomnessGeneratedEvent>(v5);
         arg0 + safe_add_mod(v3, v1 % v0, v0)
     }
-    
+
     public fun u32_integer() : u32 acquires PerBlockRandomness {
         let v0 = next_32_bytes();
         let v1 = 0;
@@ -188,14 +189,14 @@ module 0x1::randomness {
         0x1::event::emit<RandomnessGeneratedEvent>(v4);
         v1
     }
-    
+
     public fun u32_range(arg0: u32, arg1: u32) : u32 acquires PerBlockRandomness {
         let v0 = u256_integer_internal();
         let v1 = RandomnessGeneratedEvent{dummy_field: false};
         0x1::event::emit<RandomnessGeneratedEvent>(v1);
         arg0 + ((v0 % ((arg1 - arg0) as u256)) as u32)
     }
-    
+
     public fun u64_integer() : u64 acquires PerBlockRandomness {
         let v0 = next_32_bytes();
         let v1 = 0;
@@ -209,31 +210,31 @@ module 0x1::randomness {
         0x1::event::emit<RandomnessGeneratedEvent>(v4);
         v1
     }
-    
+
     public fun u64_range(arg0: u64, arg1: u64) : u64 acquires PerBlockRandomness {
         let v0 = RandomnessGeneratedEvent{dummy_field: false};
         0x1::event::emit<RandomnessGeneratedEvent>(v0);
         u64_range_internal(arg0, arg1)
     }
-    
+
     public fun u64_range_internal(arg0: u64, arg1: u64) : u64 acquires PerBlockRandomness {
         let v0 = u256_integer_internal();
         arg0 + ((v0 % ((arg1 - arg0) as u256)) as u64)
     }
-    
+
     public fun u8_integer() : u8 acquires PerBlockRandomness {
         let v0 = next_32_bytes();
         let v1 = RandomnessGeneratedEvent{dummy_field: false};
         0x1::event::emit<RandomnessGeneratedEvent>(v1);
         0x1::vector::pop_back<u8>(&mut v0)
     }
-    
+
     public fun u8_range(arg0: u8, arg1: u8) : u8 acquires PerBlockRandomness {
         let v0 = u256_integer_internal();
         let v1 = RandomnessGeneratedEvent{dummy_field: false};
         0x1::event::emit<RandomnessGeneratedEvent>(v1);
         arg0 + ((v0 % ((arg1 - arg0) as u256)) as u8)
     }
-    
+
     // decompiled from Move bytecode v7
 }

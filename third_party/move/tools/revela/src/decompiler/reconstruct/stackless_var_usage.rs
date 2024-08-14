@@ -2,7 +2,10 @@
 // Copyright © Aptos Foundation
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{cell::RefCell, collections::HashMap};
+use std::{
+    cell::{RefCell, RefMut},
+    collections::{HashMap, HashSet},
+};
 
 use super::{
     super::cfg::{
@@ -26,13 +29,8 @@ pub struct VarUsage {
     pub read_cnt: usize,
     pub write_cnt: usize,
 
-    pub first_read: usize,
-    pub first_write: usize,
-    pub last_read: usize,
-    pub last_write: usize,
-
-    last_set_read_time_container: usize,
-    last_set_write_time_container: usize,
+    pub vars_written_before_last_read: HashSet<usize>,
+    pub vars_read_before_last_write: HashSet<usize>,
 
     pub max_read_cnt_max_from_cfg: usize,
     pub should_keep_as_variable: bool,
@@ -43,13 +41,9 @@ impl Default for VarUsage {
         Self {
             read_cnt: 0,
             write_cnt: 0,
-            first_read: usize::MAX,
-            first_write: usize::MAX,
-            last_read: usize::MIN,
-            last_write: usize::MIN,
 
-            last_set_read_time_container: usize::MAX,
-            last_set_write_time_container: usize::MAX,
+            vars_written_before_last_read: Default::default(),
+            vars_read_before_last_write: Default::default(),
 
             max_read_cnt_max_from_cfg: Default::default(),
             should_keep_as_variable: Default::default(),
@@ -95,47 +89,41 @@ pub struct VarUsageSnapshot<T: Default + Clone + VarUsageSnapshotWithDelta> {
 }
 
 impl VarUsage {
-    fn add_read(&mut self, time: usize, time_container: usize) {
+    fn add_read(&mut self, written_before: &HashSet<usize>) {
         self.read_cnt += 1;
         self.max_read_cnt_max_from_cfg += 1;
-        self.last_read = self.last_read.max(time);
-        self.first_read = self.first_read.min(time);
-        self.last_set_read_time_container = time_container;
+        self.vars_written_before_last_read.extend(written_before);
     }
 
-    fn add_write(&mut self, time: usize, time_container: usize) {
+    fn add_write(&mut self, read_before: &HashSet<usize>) {
         self.write_cnt += 1;
-        self.last_write = self.last_write.max(time);
-        self.first_write = self.first_write.min(time);
-        self.last_set_write_time_container = time_container;
+        self.vars_read_before_last_write.extend(read_before);
     }
 }
 
 impl BranchMergeableVar for VarUsage {
     fn merge_branch(&self, other: &Self, base: &Option<&Self>) -> Option<Self> {
-        let (base_read_cnt, base_write_cnt, base_last_set_read, base_last_set_write) = match base {
-            Some(base) => (
-                base.read_cnt,
-                base.write_cnt,
-                base.last_set_read_time_container,
-                base.last_set_write_time_container,
-            ),
+        let (base_read_cnt, base_write_cnt) = match base {
+            Some(base) => (base.read_cnt, base.write_cnt),
 
-            None => (0, 0, usize::MAX, usize::MAX),
+            None => (0, 0),
         };
 
         Some(Self {
             read_cnt: self.read_cnt + other.read_cnt - base_read_cnt,
             write_cnt: self.write_cnt + other.write_cnt - base_write_cnt,
 
-            // these cannot be merged, each branch has its own time range
-            first_read: Default::default(),
-            last_read: Default::default(),
-            first_write: Default::default(),
-            last_write: Default::default(),
+            vars_written_before_last_read: self
+                .vars_written_before_last_read
+                .union(&other.vars_written_before_last_read)
+                .cloned()
+                .collect(),
 
-            last_set_read_time_container: base_last_set_read,
-            last_set_write_time_container: base_last_set_write,
+            vars_read_before_last_write: self
+                .vars_read_before_last_write
+                .union(&other.vars_read_before_last_write)
+                .cloned()
+                .collect(),
 
             should_keep_as_variable: self.should_keep_as_variable || other.should_keep_as_variable,
             max_read_cnt_max_from_cfg: self
@@ -145,18 +133,42 @@ impl BranchMergeableVar for VarUsage {
     }
 }
 
-pub struct StacklessVarUsagePipeline {}
+pub struct StacklessVarUsagePipeline<'s> {
+    env: &'s move_model::model::GlobalEnv,
+}
+
+#[derive(Clone, Debug)]
+struct UnitConfig {
+    written_before: HashSet<usize>,
+    read_before: HashSet<usize>,
+}
+
+impl UnitConfig {
+    fn new() -> Self {
+        Self {
+            written_before: Default::default(),
+            read_before: Default::default(),
+        }
+    }
+
+    fn merge_with(&mut self, other: &UnitConfig) {
+        self.written_before.extend(&other.written_before);
+        self.read_before.extend(&other.read_before);
+    }
+}
 
 struct ForwardVisitorConfig {
+    unit_config: RefCell<UnitConfig>,
     t: RefCell<usize>,
 }
 struct BackwardVisitorConfig {
+    unit_config: RefCell<UnitConfig>,
     t: RefCell<usize>,
 }
 
-impl StacklessVarUsagePipeline {
-    pub fn new() -> Self {
-        Self {}
+impl<'s> StacklessVarUsagePipeline<'s> {
+    pub fn new(env: &'s move_model::model::GlobalEnv) -> Self {
+        Self { env }
     }
 
     pub fn run(
@@ -164,30 +176,135 @@ impl StacklessVarUsagePipeline {
         unit: &mut WithMetadata<CodeUnitBlock<usize, StacklessBlockContent>>,
     ) -> Result<VarPipelineStateRef<VarUsage>, anyhow::Error> {
         self.run_unit(
-            &BackwardVisitorConfig { t: RefCell::new(0) },
+            &BackwardVisitorConfig {
+                unit_config: RefCell::new(UnitConfig::new()),
+                t: RefCell::new(0),
+            },
             &VarPipelineState::new().boxed(),
             unit,
         )?;
 
         self.run_unit(
-            &ForwardVisitorConfig { t: RefCell::new(0) },
+            &ForwardVisitorConfig {
+                unit_config: RefCell::new(UnitConfig::new()),
+                t: RefCell::new(0),
+            },
             &VarPipelineState::new().boxed(),
             unit,
         )
     }
+
+    fn update_state(
+        &self,
+        inst: &AnnotatedBytecode,
+        unit_config: &mut RefMut<UnitConfig>,
+        state: &mut Box<VarPipelineState<VarUsage>>,
+        running_forward: bool,
+        _t: usize,
+    ) {
+        use move_stackless_bytecode::stackless_bytecode::Bytecode::*;
+        match &inst.bytecode {
+            Assign(_, dst, src, _) => {
+                let svar = state.get_or_default(src);
+                svar.add_read(&unit_config.written_before);
+                unit_config.read_before.insert(*src);
+                let dvar = state.get_or_default(dst);
+                dvar.add_write(&unit_config.read_before);
+                unit_config.written_before.insert(*dst);
+            }
+
+            Call(_, dsts, op, srcs, _) => {
+                use move_stackless_bytecode::stackless_bytecode::Operation;
+                if matches!(op, Operation::Drop) {
+                    for s in srcs {
+                        let svar = state.get_or_default(s);
+                        svar.should_keep_as_variable = true;
+                    }
+                    return;
+                }
+                for &src in srcs {
+                    let svar = state.get_or_default(&src);
+                    svar.add_read(&unit_config.written_before);
+                }
+                unit_config.read_before.extend(srcs);
+
+                if let Operation::Function(mid, fid, _types) = op {
+                    let module = self.env.get_module(*mid);
+                    let func = module.get_function(*fid);
+
+                    for (idx, param) in func.get_parameters().iter().enumerate() {
+                        let ty = &param.1;
+                        if ty.is_mutable_reference() {
+                            let src = srcs[idx];
+                            let svar = state.get_or_default(&src);
+                            // we don't know if there would be a write to the reference,
+                            // so we conservatively assume that there would be a write
+                            svar.add_write(&unit_config.read_before);
+                        }
+                    }
+                }
+
+                for dst in dsts {
+                    let dvar = state.get_or_default(dst);
+                    dvar.add_write(&unit_config.read_before);
+                }
+
+                unit_config.written_before.extend(dsts);
+                if running_forward {
+                    if matches!(op, Operation::Pack(..) | Operation::Unpack(..)) {
+                        for dst in dsts {
+                            let dvar = state.get_or_default(dst);
+                            dvar.should_keep_as_variable = true;
+                        }
+                    }
+                    if matches!(op, Operation::BorrowLoc) {
+                        for src in srcs {
+                            let svar = state.get_or_default(src);
+                            svar.should_keep_as_variable = true;
+                        }
+                    }
+                }
+            }
+
+            Ret(_, srcs) => {
+                for &src in srcs {
+                    let svar = state.get_or_default(&src);
+                    svar.add_read(&unit_config.written_before);
+                }
+                unit_config.read_before.extend(srcs);
+            }
+
+            Branch(_, _, _, src) | Abort(_, src) => {
+                let svar = state.get_or_default(src);
+                svar.add_read(&unit_config.written_before);
+                unit_config.read_before.insert(*src);
+            }
+
+            Load(_, dst, _) => {
+                let dvar = state.get_or_default(dst);
+                dvar.add_write(&unit_config.read_before);
+                unit_config.written_before.insert(*dst);
+            }
+
+            Jump(..)
+            | Label(..)
+            | Nop(..)
+            | SpecBlock(_, _)
+            | SaveMem(_, _, _)
+            | SaveSpecVar(_, _, _)
+            | Prop(_, _, _) => {}
+        }
+    }
 }
 
-impl VarPipelineRunner<BackwardVisitorConfig, VarUsage> for StacklessVarUsagePipeline {
+impl<'s> VarPipelineRunner<BackwardVisitorConfig, VarUsage> for StacklessVarUsagePipeline<'s> {
     fn run_unit(
         &self,
         config: &BackwardVisitorConfig,
         state: &VarPipelineStateRef<VarUsage>,
         unit_block: &mut WithMetadata<CodeUnitBlock<usize, StacklessBlockContent>>,
     ) -> Result<VarPipelineStateRef<VarUsage>, anyhow::Error> {
-        let original_t = *config.t.borrow();
-
         let mut state = state.copy_with_new_time();
-        *config.t.borrow_mut() = 0;
 
         unit_block
             .meta_mut()
@@ -197,8 +314,6 @@ impl VarPipelineRunner<BackwardVisitorConfig, VarUsage> for StacklessVarUsagePip
         for block in &mut unit_block.inner_mut().blocks.iter_mut().rev() {
             state = self.run_hyperblock(config, &state, block)?;
         }
-
-        *config.t.borrow_mut() = original_t;
 
         Ok(state)
     }
@@ -224,29 +339,23 @@ impl VarPipelineRunner<BackwardVisitorConfig, VarUsage> for StacklessVarUsagePip
             }
 
             HyperBlock::IfElseBlocks { if_unit, else_unit } => {
-                let state_time_id = state.time_id();
-                let t = *config.t.borrow();
-
+                let saved_unit_config = config.unit_config.borrow().clone();
                 let state_t = self.run_unit(config, &state, if_unit.as_mut())?;
+                let t_unit_config = config.unit_config.borrow().clone();
+                *config.unit_config.borrow_mut() = saved_unit_config;
                 let state_f = self.run_unit(config, &state, else_unit.as_mut())?;
+                config.unit_config.borrow_mut().merge_with(&t_unit_config);
                 state = state
-                    .merge_branches(vec![&state_t, &state_f], |s| {
-                        update_rw_with_time_id_check(s, state_time_id, t)
-                    })
+                    .merge_branches(vec![&state_t, &state_f], |s| s.clone())
                     .boxed();
             }
 
             HyperBlock::WhileBlocks { inner, outer, .. } => {
-                let state_time_id = state.time_id();
-                let t = *config.t.borrow();
-
                 state = self.run_unit(config, &state, outer.as_mut())?;
+                let o_unit_config = config.unit_config.borrow().clone();
                 let state_i = self.run_unit(config, &state, inner.as_mut())?;
-                state = state
-                    .merge_branches(vec![&state_i], |s| {
-                        update_rw_with_time_id_check(s, state_time_id, t)
-                    })
-                    .boxed();
+                config.unit_config.borrow_mut().merge_with(&o_unit_config);
+                state = state.merge_branches(vec![&state_i], |s| s.clone()).boxed();
             }
         };
         Ok(state)
@@ -274,14 +383,20 @@ impl VarPipelineRunner<BackwardVisitorConfig, VarUsage> for StacklessVarUsagePip
             inst.meta_mut()
                 .get_or_default::<VarUsageSnapshot<VarUsage>>()
                 .backward_run_pre = (*config.t.borrow(), state.snapshot());
-            update_state(inst, &mut state, false, *config.t.borrow());
+            self.update_state(
+                inst,
+                &mut config.unit_config.borrow_mut(),
+                &mut state,
+                false,
+                *config.t.borrow(),
+            );
         }
 
         Ok(state)
     }
 }
 
-impl VarPipelineRunner<ForwardVisitorConfig, VarUsage> for StacklessVarUsagePipeline {
+impl<'s> VarPipelineRunner<ForwardVisitorConfig, VarUsage> for StacklessVarUsagePipeline<'s> {
     fn run_unit(
         &self,
         config: &ForwardVisitorConfig,
@@ -333,28 +448,25 @@ impl VarPipelineRunner<ForwardVisitorConfig, VarUsage> for StacklessVarUsagePipe
             }
 
             HyperBlock::IfElseBlocks { if_unit, else_unit } => {
-                let state_time_id = state.time_id();
-                let t = *config.t.borrow();
+                let saved_unit_config = config.unit_config.borrow().clone();
                 let state_t = self.run_unit(config, &state, if_unit.as_mut())?;
+                let t_unit_config = config.unit_config.borrow().clone();
+                *config.unit_config.borrow_mut() = saved_unit_config;
                 let state_f = self.run_unit(config, &state, else_unit.as_mut())?;
+                config.unit_config.borrow_mut().merge_with(&t_unit_config);
                 state = state
-                    .merge_branches(vec![&state_t, &state_f], |x| {
-                        update_rw_with_time_id_check(x, state_time_id, t)
-                    })
+                    .merge_branches(vec![&state_t, &state_f], |x| x.clone())
                     .boxed();
             }
 
             HyperBlock::WhileBlocks { inner, outer, .. } => {
-                let state_time_id = state.time_id();
-                let t = *config.t.borrow();
-
+                let saved_unit_config = config.unit_config.borrow().clone();
                 let state_i = self.run_unit(config, &state, inner.as_mut())?;
-                state = state
-                    .merge_branches(vec![&state_i], |x| {
-                        update_rw_with_time_id_check(x, state_time_id, t)
-                    })
-                    .boxed();
-
+                config
+                    .unit_config
+                    .borrow_mut()
+                    .merge_with(&saved_unit_config);
+                state = state.merge_branches(vec![&state_i], |s| s.clone()).boxed();
                 state = self.run_unit(config, &state, outer.as_mut())?;
             }
         }
@@ -387,7 +499,13 @@ impl VarPipelineRunner<ForwardVisitorConfig, VarUsage> for StacklessVarUsagePipe
             inst.meta_mut()
                 .get_or_default::<VarUsageSnapshot<VarUsage>>()
                 .forward_run_pre = (*config.t.borrow(), state.snapshot());
-            update_state(inst, &mut state, true, *config.t.borrow());
+            self.update_state(
+                inst,
+                &mut config.unit_config.borrow_mut(),
+                &mut state,
+                true,
+                *config.t.borrow(),
+            );
             inst.meta_mut()
                 .get_or_default::<VarUsageSnapshot<VarUsage>>()
                 .forward_run_post = state.delta(prev_state.as_ref());
@@ -399,96 +517,5 @@ impl VarPipelineRunner<ForwardVisitorConfig, VarUsage> for StacklessVarUsagePipe
             .forward_run_post = state.delta(original_state.as_ref());
 
         Ok(state)
-    }
-}
-
-fn update_rw_with_time_id_check(s: &VarUsage, state_time_id: usize, t: usize) -> VarUsage {
-    let mut s = s.clone();
-
-    if s.last_set_read_time_container != state_time_id {
-        s.first_read = t;
-        s.last_read = t;
-    } else {
-        s.first_read = usize::MAX;
-        s.last_read = usize::MIN;
-    }
-
-    if s.last_set_write_time_container != state_time_id {
-        s.first_write = t;
-        s.last_write = t;
-    } else {
-        s.first_write = usize::MAX;
-        s.last_write = usize::MIN;
-    }
-
-    s
-}
-fn update_state(
-    inst: &AnnotatedBytecode,
-    state: &mut Box<VarPipelineState<VarUsage>>,
-    running_forward: bool,
-    t: usize,
-) {
-    use move_stackless_bytecode::stackless_bytecode::Bytecode::*;
-    let state_time_id = state.time_id();
-    match &inst.bytecode {
-        Assign(_, dst, src, _) => {
-            let svar = state.get_or_default(src);
-            svar.add_read(t, state_time_id);
-            let dvar = state.get_or_default(dst);
-            dvar.add_write(t, state_time_id);
-        }
-
-        Call(_, dsts, op, srcs, _) => {
-            use move_stackless_bytecode::stackless_bytecode::Operation;
-            if matches!(op, Operation::Drop | Operation::Release) {
-                for s in srcs {
-                    let svar = state.get_or_default(s);
-                    svar.should_keep_as_variable = true;
-                }
-                return;
-            }
-            for dst in dsts {
-                let dvar = state.get_or_default(dst);
-                dvar.add_write(t, state_time_id);
-            }
-            for &src in srcs {
-                let svar = state.get_or_default(&src);
-                svar.add_read(t, state_time_id);
-            }
-            if running_forward {
-                if matches!(op, Operation::Pack(..) | Operation::Unpack(..)) {
-                    for dst in dsts {
-                        let dvar = state.get_or_default(dst);
-                        dvar.should_keep_as_variable = true;
-                    }
-                }
-                if matches!(op, Operation::BorrowLoc) {
-                    for src in srcs {
-                        let svar = state.get_or_default(src);
-                        svar.should_keep_as_variable = true;
-                    }
-                }
-            }
-        }
-
-        Ret(_, srcs) => {
-            for &src in srcs {
-                let svar = state.get_or_default(&src);
-                svar.add_read(t, state_time_id);
-            }
-        }
-
-        Branch(_, _, _, src) | Abort(_, src) => {
-            let svar = state.get_or_default(src);
-            svar.add_read(t, state_time_id);
-        }
-
-        Load(_, dst, _) => {
-            let dvar = state.get_or_default(dst);
-            dvar.add_write(t, state_time_id);
-        }
-
-        Jump(..) | Label(..) | Nop(..) | SaveMem(..) | SaveSpecVar(..) | SpecBlock(..) | Prop(..) => {}
     }
 }

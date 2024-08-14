@@ -78,6 +78,14 @@ impl<'a> Naming<'a> {
         "_".to_string()
     }
 
+    pub fn is_variable_referenced(&self, idx: usize) -> bool {
+        if let Some(referenced_vairables) = &self.referenced_vairables {
+            referenced_vairables.contains(&idx)
+        } else {
+            true
+        }
+    }
+
     pub fn variable(&self, idx: usize) -> String {
         if let Some(referenced_vairables) = &self.referenced_vairables {
             if !referenced_vairables.contains(&idx) {

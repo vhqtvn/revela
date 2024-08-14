@@ -15,7 +15,11 @@ use move_binary_format::{
 use revela::decompiler::{Decompiler, OptimizerSettings};
 #[derive(Debug, Parser)]
 #[clap(setting = AppSettings::ArgRequiredElseHelp)]
-#[clap(version, about = "Decompile Move bytecode back to source code. By verichains.io", name = "revela")]
+#[clap(
+    version,
+    about = "Decompile Move bytecode back to source code. By verichains.io",
+    name = "revela"
+)]
 struct Args {
     /// Treat input file as a script (default is to treat file as a module)
     #[clap(short = 's', long = "script")]
@@ -49,17 +53,19 @@ fn main() {
             });
 
             if args.is_script {
-                CompiledBinary::Script(CompiledScript::deserialize(&bytecode_bytes).unwrap_or_else(
-                    |err| {
-                        panic!("Error: failed to deserialize script blob: {}", err);
-                    },
-                ))
+                CompiledBinary::Script(
+                    CompiledScript::deserialize_with_config(&bytecode_bytes, &Default::default())
+                        .unwrap_or_else(|err| {
+                            panic!("Error: failed to deserialize script blob: {}", err);
+                        }),
+                )
             } else {
-                CompiledBinary::Module(CompiledModule::deserialize(&bytecode_bytes).unwrap_or_else(
-                    |err| {
-                        panic!("Error: failed to deserialize module blob: {}", err);
-                    },
-                ))
+                CompiledBinary::Module(
+                    CompiledModule::deserialize_with_config(&bytecode_bytes, &Default::default())
+                        .unwrap_or_else(|err| {
+                            panic!("Error: failed to deserialize module blob: {}", err);
+                        }),
+                )
             }
         })
         .collect();

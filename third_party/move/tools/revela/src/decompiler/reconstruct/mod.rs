@@ -11,10 +11,12 @@ use super::{
     Naming,
 };
 use anyhow::Ok;
-use move_model::model::FunctionEnv;
-use move_stackless_bytecode::function_target::FunctionTarget;
+use move_model::{model::FunctionEnv, ty::Type};
+use move_stackless_bytecode::{function_target::FunctionTarget, stackless_bytecode::Operation};
+use optimizers::OptimizerResult;
 
 use self::{
+    ast::expr::{DecompiledExpr, DecompiledExprRef},
     stackless_var_usage::{VarUsage, VarUsageSnapshot},
     var_pipeline::{VarPipelineState, VarPipelineStateRef},
 };
@@ -29,8 +31,9 @@ use super::{
 
 pub use self::ast::optimizers::OptimizerSettings;
 
-mod ast;
+pub mod ast;
 pub mod code_unit;
+mod stackless_var_alias;
 mod stackless_var_usage;
 mod var_pipeline;
 use ast::*;
@@ -96,13 +99,38 @@ impl<'a> SourceGen<'a> {
         &mut self,
         optimizer_settings: &OptimizerSettings,
     ) -> Result<SourceCodeUnit, anyhow::Error> {
+        let mut alias_solver = stackless_var_alias::VarAliasChecker::new();
+
         let mut evaluation_ctx = StacklessEvaluationContext::new(self.func_env);
+        let mut predefined_variables = Vec::new();
+        for i in self.func_target.get_parameters() {
+            predefined_variables.push(i);
+        }
+        let mut nonalias_variables = Vec::new();
+        for i in 0..self.func_target.get_local_count() {
+            let typ = self.func_target.get_local_type(i);
+            if typ.is_mutable_reference() {
+                nonalias_variables.push(i);
+            }
+        }
+        let aliasset =
+            alias_solver.calculate(self.body, &predefined_variables, &nonalias_variables)?;
+        for set in aliasset.sets.iter() {
+            let mut set: Vec<_> = set.iter().collect();
+            set.sort();
+            let mut iter = set.iter();
+            let first = *iter.next().unwrap();
+            for &v in iter {
+                evaluation_ctx.add_pre_defined_alias(v, first);
+            }
+        }
 
         for i in self.func_target.get_parameters() {
             evaluation_ctx.flush_local_value(i, Some(true));
         }
 
-        let variable_usage_runner = stackless_var_usage::StacklessVarUsagePipeline::new();
+        let variable_usage_runner =
+            stackless_var_usage::StacklessVarUsagePipeline::new(self.func_env.module_env.env);
         self.var_usage = variable_usage_runner.run(self.body)?;
 
         let mut cfg_context = StructureCtx::new();
@@ -113,16 +141,26 @@ impl<'a> SourceGen<'a> {
             return Err(anyhow::anyhow!("final branch condition stack not empty"));
         }
 
-        let (ast, referenced_vairables) =
-            ast::optimizers::run(&ast, self.func_target, &self.naming, optimizer_settings)?;
+        let OptimizerResult {
+            unit,
+            referenced_variables,
+            renamed_variables: _,
+        } = ast::optimizers::run(
+            &ast,
+            self.func_target,
+            &self.naming,
+            optimizer_settings,
+            evaluation_ctx.aliases(),
+        )?;
 
-        let final_naming = self.naming.with_referenced_variables(&referenced_vairables);
+        let final_naming = self.naming.with_referenced_variables(&referenced_variables);
 
-        Ok(ast.to_source(&final_naming, true)?)
+
+        Ok(unit.to_source(&final_naming, true)?)
     }
 
     // this function check with the assumption that the variable's value has no dependency
-    fn can_ignore_variable_assigment(
+    fn can_ignore_variable_assignment(
         &self,
         v: usize,
         s_ctx: &StructureCtx,
@@ -169,13 +207,19 @@ impl<'a> SourceGen<'a> {
         &self,
         _code_unit: &mut DecompiledCodeUnitRef, // in case we need to add comments
         dst: usize,
-        is_variable_copy_assigment: bool,
-        result: &super::evaluator::stackless::Expr,
+        _is_variable_copy_assignment: bool,
+        result: &super::evaluator::stackless::expr_node::Expr,
         evaluation_ctx: &StacklessEvaluationContext<'_>,
         s_ctx: &StructureCtx,
         node_var_usage: &VarUsageSnapshot<VarUsage>,
     ) -> bool {
-        let deps = result.collect_variables(false).variables;
+        let deps: HashSet<_> = result
+            .collect_variables_with_count(false, true)
+            .variables
+            .keys()
+            .cloned()
+            .collect();
+        let deps = &deps;
 
         let mut queue: HashSet<usize> = deps.clone();
         let mut visited: HashSet<usize> = deps.clone();
@@ -194,8 +238,8 @@ impl<'a> SourceGen<'a> {
                 continue;
             }
 
-            let u_deps = u_value.collect_variables(false).variables;
-            for v in u_deps {
+            let u_deps = u_value.collect_variables_with_count(false, true).variables;
+            for (v, _) in u_deps {
                 if !visited.contains(&v) {
                     queue.insert(v);
                     visited.insert(v);
@@ -246,13 +290,9 @@ impl<'a> SourceGen<'a> {
                     return false;
                 }
 
-                let last_read = dst_var.unwrap().first_read;
-                if deps.iter().all(|d| {
+                if deps.iter().all(|d: &usize| {
                     if let Some(dusg) = forward_state.get(d) {
-                        // on forward state, time is counted from the end, so the larger its value, the earlier it occurs
-                        // equality is allowed, the expression will be dep = f(dst) at that time
-                        dusg.last_write < last_read
-                            || (is_variable_copy_assigment && dusg.last_write == last_read)
+                        !dusg.vars_read_before_last_write.contains(&dst)
                     } else {
                         true
                     }
@@ -266,6 +306,32 @@ impl<'a> SourceGen<'a> {
 
         // for now, we cant make sure, let's assume it's needed
         true
+    }
+
+    fn check_need_declare_due_to_mut_ref(
+        &self,
+        op: &Operation,
+        srcs: &[usize],
+        node_var_usage: &VarUsageSnapshot<VarUsage>,
+    ) -> bool {
+        if let Operation::Function(mid, fid, _types) = op {
+            let module = self.func_env.module_env.env.get_module(*mid);
+            let func = module.get_function(*fid);
+            for (idx, param) in func.get_parameters().iter().enumerate() {
+                let ty = &param.1;
+                if ty.is_mutable_reference() {
+                    let src = srcs[idx];
+                    let forward_state = &node_var_usage.backward_run_pre.1;
+                    if let Some(usage) = forward_state.get(&src) {
+                        if usage.read_cnt > 0 {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     fn visit_codeunit(
@@ -288,8 +354,7 @@ impl<'a> SourceGen<'a> {
         while let Some(block) = iter.next() {
             let mut next_inner_s_ctx = s_ctx.clone();
             next_inner_s_ctx.apply_is_tail(iter.peek().is_none());
-            let block = self.visit_hyperblock(evaluation_ctx, &next_inner_s_ctx, &block)?;
-            codeunit.extends(block)?;
+            self.visit_hyperblock(&mut codeunit, evaluation_ctx, &next_inner_s_ctx, &block)?;
         }
 
         if !current.is_terminated_in_loop() {
@@ -332,12 +397,11 @@ impl<'a> SourceGen<'a> {
 
     fn visit_hyperblock(
         &self,
+        codeunit: &mut DecompiledCodeUnitRef,
         evaluation_ctx: &mut StacklessEvaluationContext<'_>,
         s_ctx: &StructureCtx,
         block: &WithMetadata<HyperBlock<usize, StacklessBlockContent>>,
-    ) -> Result<DecompiledCodeUnitRef, anyhow::Error> {
-        let mut codeunit = DecompiledCodeUnit::new();
-
+    ) -> Result<(), anyhow::Error> {
         match block.inner() {
             HyperBlock::ConnectedBlocks(blocks) => {
                 let mut iter = blocks.iter().peekable();
@@ -345,17 +409,14 @@ impl<'a> SourceGen<'a> {
                     let mut inner_s_ctx = s_ctx.clone();
                     inner_s_ctx.apply_is_tail(iter.peek().is_none());
 
-                    let block = self.visit_basicblock(evaluation_ctx, &mut inner_s_ctx, block)?;
-                    codeunit.extends(block)?;
+                    self.visit_basicblock(codeunit, evaluation_ctx, &mut inner_s_ctx, block)?;
                 }
             }
 
             HyperBlock::IfElseBlocks { if_unit, else_unit } => {
-                let cond = evaluation_ctx.pop_branch_condition();
-                if cond.is_none() {
+                let Some(cond) = evaluation_ctx.pop_branch_condition() else {
                     return Err(anyhow::anyhow!("fail to obtain branch condition"));
-                }
-                let cond = cond.unwrap();
+                };
 
                 let mut t_vars =
                     find_need_propagate_inner_defining_variables(if_unit, evaluation_ctx);
@@ -382,9 +443,7 @@ impl<'a> SourceGen<'a> {
                 let mut need_declares = HashSet::new();
                 for vs in [&t_vars, &f_vars] {
                     if let Some(vs) = vs {
-                        vs.difference(&if_vars).for_each(|&v| {
-                            need_declares.insert(v);
-                        });
+                        need_declares.extend(vs.difference(&if_vars));
                     }
                 }
                 let mut need_declares = need_declares.iter().cloned().collect::<Vec<_>>();
@@ -418,17 +477,32 @@ impl<'a> SourceGen<'a> {
                 let meta = block.meta();
                 let var_usage = meta.get::<VarUsageSnapshot<VarUsage>>().unwrap();
 
-                for v in evaluation_ctx.merge_branches(&vec![&t_ctx, &f_ctx], true) {
-                    let has_future_usage = if let Some(usage) = var_usage.backward_run_pre.1.get(&v)
-                    {
-                        usage.read_cnt + usage.write_cnt > 0
-                    } else {
-                        false
-                    };
-                    if !has_future_usage {
-                        continue;
+                let mut branches_to_merge = Vec::new();
+
+                if !if_unit.is_terminated() {
+                    branches_to_merge.push(&t_ctx);
+                }
+
+                if !else_unit.is_terminated() {
+                    branches_to_merge.push(&f_ctx);
+                }
+
+                if branches_to_merge.is_empty() {
+                } else if branches_to_merge.len() == 1 {
+                    *evaluation_ctx = branches_to_merge[0].clone();
+                } else {
+                    for v in evaluation_ctx.merge_branches(&branches_to_merge, true) {
+                        let has_future_usage =
+                            if let Some(usage) = var_usage.backward_run_pre.1.get(&v) {
+                                usage.read_cnt + usage.write_cnt > 0
+                            } else {
+                                false
+                            };
+                        if !has_future_usage {
+                            continue;
+                        }
+                        evaluation_ctx.flush_local_value(v, Some(true));
                     }
-                    evaluation_ctx.flush_local_value(v, Some(true));
                 }
 
                 let mut result_variables = if_vars.iter().cloned().collect::<Vec<_>>();
@@ -526,16 +600,16 @@ impl<'a> SourceGen<'a> {
             }
         }
 
-        Ok(codeunit)
+        Ok(())
     }
 
     fn visit_basicblock(
         &self,
+        codeunit: &mut DecompiledCodeUnitRef,
         evaluation_ctx: &mut StacklessEvaluationContext<'_>,
         s_ctx: &StructureCtx,
         block: &WithMetadata<BasicBlock<usize, StacklessBlockContent>>,
-    ) -> Result<DecompiledCodeUnitRef, anyhow::Error> {
-        let mut codeunit = DecompiledCodeUnit::new();
+    ) -> Result<(), anyhow::Error> {
         let mut iter = block
             .inner()
             .content
@@ -575,7 +649,7 @@ impl<'a> SourceGen<'a> {
                 new_variables,
                 flushed_variables: pre_flushed,
                 cannot_keep_as_expr,
-            } = evaluation_ctx.run(&bytecode.bytecode, &dst_types)?;
+            } = evaluation_ctx.run(&bytecode, &dst_types)?;
 
             if result.should_ignore() {
                 continue;
@@ -589,9 +663,9 @@ impl<'a> SourceGen<'a> {
                     if dst_value.is_non_trivial()
                         || pre_flushed.contains(&dst)
                         || cannot_keep_as_expr
-                        || !self.can_ignore_variable_assigment(dst, s_ctx, &node_var_usage)
+                        || !self.can_ignore_variable_assignment(dst, s_ctx, &node_var_usage)
                         || self.check_need_declare(
-                            &mut codeunit,
+                            codeunit,
                             dst,
                             true,
                             &result,
@@ -608,14 +682,14 @@ impl<'a> SourceGen<'a> {
 
                         evaluation_ctx.flush_local_value(dst, Some(is_new));
                     } else {
-                        let assigment_id = evaluation_ctx.flush_pending_local_value(
+                        let assignment_id = evaluation_ctx.flush_pending_local_value(
                             dst,
                             Some(is_new),
                             result.copy(),
                         );
 
                         codeunit.add(DecompiledCodeItem::PossibleAssignStatement {
-                            assigment_id,
+                            assignment_id,
                             variable: dst,
                             value: DecompiledExpr::EvaluationExpr(result.copy()).boxed(),
                             is_decl: is_new,
@@ -623,28 +697,38 @@ impl<'a> SourceGen<'a> {
                     }
                 }
 
-                Call(_, dsts, _, _, _) => {
-                    use super::evaluator::stackless::ExprNodeOperation as E;
-                    if let E::StructUnpack(name, fields, val, _types) =
-                        &result.value().borrow().operation
+                Call(_, dsts, op, srcs, _) => {
+                    use super::evaluator::stackless::expr_node::ExprNodeOperation as E;
+                    if let Some((name, fields, val)) =
+                        match &result.value().borrow().operation {
+                            E::StructUnpack(name, fields, val, types) => Some((
+                                format!("{}{}", name, self.types_specifier_str(types)),
+                                fields,
+                                val,
+                            )),
+                            E::VariantUnpack(name, vname, fields, val, types) => Some((
+                                format!("{}{}::{}", name, self.types_specifier_str(types), vname),
+                                fields,
+                                val,
+                            )),
+                            _ => None,
+                        }
                     {
                         // special case: unpack to no variable
                         if dsts.is_empty() {
                             codeunit.add(DecompiledCodeItem::AssignStructureStatement {
                                 structure_visible_name: name.clone(),
                                 variables: Vec::new(),
+                                fields_count: fields.len(),
                                 value: DecompiledExpr::EvaluationExpr(
                                     val.borrow().operation.to_expr(),
                                 )
                                 .boxed(),
                             });
                         } else {
-                            if fields.len() != dsts.len() {
-                                return Err(anyhow::anyhow!("struct unpack field count mismatch"));
-                            }
-
                             codeunit.add(DecompiledCodeItem::AssignStructureStatement {
                                 structure_visible_name: name.clone(),
+                                fields_count: fields.len(),
                                 variables: fields
                                     .iter()
                                     .zip(dsts.iter())
@@ -680,9 +764,9 @@ impl<'a> SourceGen<'a> {
                         if dst_value.is_non_trivial()
                             || pre_flushed.contains(&dst)
                             || cannot_keep_as_expr
-                            || !self.can_ignore_variable_assigment(dst, s_ctx, &node_var_usage)
+                            || !self.can_ignore_variable_assignment(dst, s_ctx, &node_var_usage)
                             || self.check_need_declare(
-                                &mut codeunit,
+                                codeunit,
                                 dst,
                                 false,
                                 &result,
@@ -690,6 +774,7 @@ impl<'a> SourceGen<'a> {
                                 s_ctx,
                                 &node_var_usage,
                             )
+                            || self.check_need_declare_due_to_mut_ref(op, srcs, &node_var_usage)
                         {
                             codeunit.add(DecompiledCodeItem::AssignStatement {
                                 variable: dst,
@@ -699,14 +784,14 @@ impl<'a> SourceGen<'a> {
 
                             evaluation_ctx.flush_local_value(dst, Some(is_new));
                         } else {
-                            let assigment_id = evaluation_ctx.flush_pending_local_value(
+                            let assignment_id = evaluation_ctx.flush_pending_local_value(
                                 dst,
                                 Some(is_new),
                                 result.copy(),
                             );
 
                             codeunit.add(DecompiledCodeItem::PossibleAssignStatement {
-                                assigment_id,
+                                assignment_id,
                                 variable: dst,
                                 value: DecompiledExpr::EvaluationExpr(result.copy()).boxed(),
                                 is_decl: is_new,
@@ -744,13 +829,13 @@ impl<'a> SourceGen<'a> {
                     // we dont need cycle reference in this case, as val is a constant
                     if dst_value.is_non_trivial()
                         || pre_flushed.contains(&dst)
-                        || !self.can_ignore_variable_assigment(dst, s_ctx, &node_var_usage)
+                        || !self.can_ignore_variable_assignment(dst, s_ctx, &node_var_usage)
                     {
                         let is_new = new_variables.contains(&dst);
                         codeunit.add(DecompiledCodeItem::AssignStatement {
                             variable: dst,
                             value: DecompiledExpr::EvaluationExpr(
-                                crate::decompiler::evaluator::stackless::ExprNodeOperation::Const(
+                                crate::decompiler::evaluator::stackless::expr_node::ExprNodeOperation::Const(
                                     val.clone(),
                                 )
                                 .to_expr(),
@@ -826,7 +911,22 @@ impl<'a> SourceGen<'a> {
             }
         };
 
-        Ok(codeunit)
+        Ok(())
+    }
+
+    fn types_specifier_str(&self, types: &[Type]) -> String {
+        if types.is_empty() {
+            return "".to_string();
+        }
+
+        format!(
+            "<{}>",
+            types
+                .iter()
+                .map(|x| self.naming.ty(x))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     }
 }
 

@@ -4,7 +4,7 @@ module 0x1::smart_table {
         key: T0,
         value: T1,
     }
-    
+
     struct SmartTable<T0, T1> has store {
         buckets: 0x1::table_with_length::TableWithLength<u64, vector<Entry<T0, T1>>>,
         num_buckets: u64,
@@ -13,7 +13,7 @@ module 0x1::smart_table {
         split_load_threshold: u8,
         target_bucket_size: u64,
     }
-    
+
     public fun contains<T0: drop, T1>(arg0: &SmartTable<T0, T1>, arg1: T0) : bool {
         let v0 = 0x1::aptos_hash::sip_hash_from_value<T0>(&arg1);
         let v1 = bucket_index(arg0.level, arg0.num_buckets, v0);
@@ -31,29 +31,24 @@ module 0x1::smart_table {
         };
         v4
     }
-    
+
     public fun add_all<T0, T1>(arg0: &mut SmartTable<T0, T1>, arg1: vector<T0>, arg2: vector<T1>) {
-        let v0 = arg1;
-        let v1 = arg2;
-        0x1::vector::reverse<T0>(&mut v0);
-        0x1::vector::reverse<T1>(&mut v1);
-        let v2 = v0;
-        let v3 = v1;
-        let v4 = 0x1::vector::length<T0>(&v2);
-        let v5 = v4;
-        assert!(v4 == 0x1::vector::length<T1>(&v3), 131074);
-        while (v5 > 0) {
-            add<T0, T1>(arg0, 0x1::vector::pop_back<T0>(&mut v2), 0x1::vector::pop_back<T1>(&mut v3));
-            v5 = v5 - 1;
+        0x1::vector::reverse<T0>(&mut arg1);
+        0x1::vector::reverse<T1>(&mut arg2);
+        let v0 = 0x1::vector::length<T0>(&arg1);
+        assert!(v0 == 0x1::vector::length<T1>(&arg2), 131074);
+        while (v0 > 0) {
+            add<T0, T1>(arg0, 0x1::vector::pop_back<T0>(&mut arg1), 0x1::vector::pop_back<T1>(&mut arg2));
+            v0 = v0 - 1;
         };
-        0x1::vector::destroy_empty<T0>(v2);
-        0x1::vector::destroy_empty<T1>(v3);
+        0x1::vector::destroy_empty<T0>(arg1);
+        0x1::vector::destroy_empty<T1>(arg2);
     }
-    
+
     public fun new<T0: copy + drop + store, T1: store>() : SmartTable<T0, T1> {
         new_with_config<T0, T1>(0, 0, 0)
     }
-    
+
     public fun add<T0, T1>(arg0: &mut SmartTable<T0, T1>, arg1: T0, arg2: T1) {
         let v0 = 0x1::aptos_hash::sip_hash_from_value<T0>(&arg1);
         let v1 = bucket_index(arg0.level, arg0.num_buckets, v0);
@@ -73,8 +68,8 @@ module 0x1::smart_table {
         };
         assert!(v5, 0x1::error::invalid_argument(4));
         let v7 = Entry<T0, T1>{
-            hash  : v0, 
-            key   : arg1, 
+            hash  : v0,
+            key   : arg1,
             value : arg2,
         };
         if (arg0.target_bucket_size == 0) {
@@ -87,7 +82,7 @@ module 0x1::smart_table {
             split_one_bucket<T0, T1>(arg0);
         };
     }
-    
+
     public fun borrow<T0: drop, T1>(arg0: &SmartTable<T0, T1>, arg1: T0) : &T1 {
         let v0 = bucket_index(arg0.level, arg0.num_buckets, 0x1::aptos_hash::sip_hash_from_value<T0>(&arg1));
         let v1 = 0x1::table_with_length::borrow<u64, vector<Entry<T0, T1>>>(&arg0.buckets, v0);
@@ -101,7 +96,7 @@ module 0x1::smart_table {
         };
         abort 0x1::error::invalid_argument(1)
     }
-    
+
     public fun borrow_mut<T0: drop, T1>(arg0: &mut SmartTable<T0, T1>, arg1: T0) : &mut T1 {
         let v0 = bucket_index(arg0.level, arg0.num_buckets, 0x1::aptos_hash::sip_hash_from_value<T0>(&arg1));
         let v1 = 0x1::table_with_length::borrow_mut<u64, vector<Entry<T0, T1>>>(&mut arg0.buckets, v0);
@@ -115,7 +110,7 @@ module 0x1::smart_table {
         };
         abort 0x1::error::invalid_argument(1)
     }
-    
+
     public fun destroy_empty<T0, T1>(arg0: SmartTable<T0, T1>) {
         assert!(arg0.size == 0, 0x1::error::invalid_argument(3));
         let v0 = 0;
@@ -124,7 +119,7 @@ module 0x1::smart_table {
             0x1::vector::destroy_empty<Entry<T0, T1>>(v1);
             v0 = v0 + 1;
         };
-        let SmartTable {
+        let SmartTable<T0, T1> {
             buckets              : v2,
             num_buckets          : _,
             level                : _,
@@ -134,14 +129,14 @@ module 0x1::smart_table {
         } = arg0;
         0x1::table_with_length::destroy_empty<u64, vector<Entry<T0, T1>>>(v2);
     }
-    
+
     public fun remove<T0: copy + drop, T1>(arg0: &mut SmartTable<T0, T1>, arg1: T0) : T1 {
         let v0 = bucket_index(arg0.level, arg0.num_buckets, 0x1::aptos_hash::sip_hash_from_value<T0>(&arg1));
         let v1 = 0x1::table_with_length::borrow_mut<u64, vector<Entry<T0, T1>>>(&mut arg0.buckets, v0);
         let v2 = 0;
         while (v2 < 0x1::vector::length<Entry<T0, T1>>(v1)) {
             if (&0x1::vector::borrow<Entry<T0, T1>>(v1, v2).key == &arg1) {
-                let Entry {
+                let Entry<T0, T1> {
                     hash  : _,
                     key   : _,
                     value : v5,
@@ -153,27 +148,27 @@ module 0x1::smart_table {
         };
         abort 0x1::error::invalid_argument(1)
     }
-    
+
     public fun length<T0, T1>(arg0: &SmartTable<T0, T1>) : u64 {
         arg0.size
     }
-    
+
     public fun borrow_buckets<T0, T1>(arg0: &SmartTable<T0, T1>) : &0x1::table_with_length::TableWithLength<u64, vector<Entry<T0, T1>>> {
         &arg0.buckets
     }
-    
+
     public fun borrow_buckets_mut<T0, T1>(arg0: &mut SmartTable<T0, T1>) : &mut 0x1::table_with_length::TableWithLength<u64, vector<Entry<T0, T1>>> {
         &mut arg0.buckets
     }
-    
+
     public fun borrow_kv<T0, T1>(arg0: &Entry<T0, T1>) : (&T0, &T1) {
         (&arg0.key, &arg0.value)
     }
-    
+
     public fun borrow_kv_mut<T0, T1>(arg0: &mut Entry<T0, T1>) : (&mut T0, &mut T1) {
         (&mut arg0.key, &mut arg0.value)
     }
-    
+
     public fun borrow_mut_with_default<T0: copy + drop, T1: drop>(arg0: &mut SmartTable<T0, T1>, arg1: T0, arg2: T1) : &mut T1 {
         if (contains<T0, T1>(arg0, arg1)) {
         } else {
@@ -181,7 +176,7 @@ module 0x1::smart_table {
         };
         borrow_mut<T0, T1>(arg0, arg1)
     }
-    
+
     public fun borrow_with_default<T0: copy + drop, T1>(arg0: &SmartTable<T0, T1>, arg1: T0, arg2: &T1) : &T1 {
         if (contains<T0, T1>(arg0, arg1)) {
             borrow<T0, T1>(arg0, arg1)
@@ -189,7 +184,7 @@ module 0x1::smart_table {
             arg2
         }
     }
-    
+
     fun bucket_index(arg0: u8, arg1: u64, arg2: u64) : u64 {
         let v0 = arg2 % (1 << arg0 + 1);
         if (v0 < arg1) {
@@ -199,7 +194,7 @@ module 0x1::smart_table {
         };
         arg1
     }
-    
+
     public fun clear<T0: drop, T1: drop>(arg0: &mut SmartTable<T0, T1>) {
         let v0 = 0x1::table_with_length::borrow_mut<u64, vector<Entry<T0, T1>>>(&mut arg0.buckets, 0);
         *v0 = 0x1::vector::empty<Entry<T0, T1>>();
@@ -212,60 +207,61 @@ module 0x1::smart_table {
         arg0.level = 0;
         arg0.size = 0;
     }
-    
+
     public fun destroy<T0: drop, T1: drop>(arg0: SmartTable<T0, T1>) {
-        clear<T0, T1>(&mut arg0);
+        let v0 = &mut arg0;
+        clear<T0, T1>(v0);
         destroy_empty<T0, T1>(arg0);
     }
-    
+
     public fun keys<T0: copy + drop + store, T1: copy + store>(arg0: &SmartTable<T0, T1>) : vector<T0> {
         let (v0, _, _) = keys_paginated<T0, T1>(arg0, 0, 0, length<T0, T1>(arg0));
         v0
     }
-    
+
     public fun keys_paginated<T0: copy + drop + store, T1: copy + store>(arg0: &SmartTable<T0, T1>, arg1: u64, arg2: u64, arg3: u64) : (vector<T0>, 0x1::option::Option<u64>, 0x1::option::Option<u64>) {
         let v0 = arg0.num_buckets;
         let v1 = &arg0.buckets;
         assert!(arg1 < v0, 8);
         let v2 = 0x1::table_with_length::borrow<u64, vector<Entry<T0, T1>>>(v1, arg1);
-        assert!(arg2 < 0x1::vector::length<Entry<T0, T1>>(v2) || arg2 == 0, 9);
-        let v3 = 0x1::vector::empty<T0>();
+        let v3 = arg2 < 0x1::vector::length<Entry<T0, T1>>(v2) || arg2 == 0;
+        assert!(v3, 9);
+        let v4 = 0x1::vector::empty<T0>();
         if (arg3 == 0) {
-            return (v3, 0x1::option::some<u64>(arg1), 0x1::option::some<u64>(arg2))
+            return (v4, 0x1::option::some<u64>(arg1), 0x1::option::some<u64>(arg2))
         };
-        v14 = false;
+        v3 = false;
         while (true) {
-            if (v14) {
+            if (v3) {
                 arg1 = arg1 + 1;
             } else {
-                v14 = true;
+                v3 = true;
             };
             if (arg1 < v0) {
-                let v4 = 0x1::table_with_length::borrow<u64, vector<Entry<T0, T1>>>(v1, arg1);
-                let v5 = 0x1::vector::length<Entry<T0, T1>>(v4);
-                let v6 = arg2;
-                let v7 = false;
+                let v5 = 0x1::table_with_length::borrow<u64, vector<Entry<T0, T1>>>(v1, arg1);
+                let v6 = 0x1::vector::length<Entry<T0, T1>>(v5);
+                let v7 = arg2;
+                let v8 = false;
                 while (true) {
-                    if (v7) {
-                        v6 = v6 + 1;
+                    if (v8) {
+                        v7 = v7 + 1;
                     } else {
-                        v7 = true;
+                        v8 = true;
                     };
-                    if (v6 < v5) {
-                        0x1::vector::push_back<T0>(&mut v3, 0x1::vector::borrow<Entry<T0, T1>>(v4, v6).key);
-                        let v8 = arg3 - 1;
-                        arg3 = v8;
-                        if (v8 == 0) {
-                            let v9 = v6 + 1;
-                            let (v10, v11, v12) = if (v9 == v5) {
+                    if (v7 < v6) {
+                        0x1::vector::push_back<T0>(&mut v4, 0x1::vector::borrow<Entry<T0, T1>>(v5, v7).key);
+                        arg3 = arg3 - 1;
+                        if (arg3 == 0) {
+                            let v9 = v7 + 1;
+                            let (v10, v11, v12) = if (v9 == v6) {
                                 let v13 = arg1 + 1;
                                 if (v13 < v0) {
-                                    (v3, 0x1::option::some<u64>(0), 0x1::option::some<u64>(v13))
+                                    (v4, 0x1::option::some<u64>(0), 0x1::option::some<u64>(v13))
                                 } else {
-                                    (v3, 0x1::option::none<u64>(), 0x1::option::none<u64>())
+                                    (v4, 0x1::option::none<u64>(), 0x1::option::none<u64>())
                                 }
                             } else {
-                                (v3, 0x1::option::some<u64>(v9), 0x1::option::some<u64>(arg1))
+                                (v4, 0x1::option::some<u64>(v9), 0x1::option::some<u64>(arg1))
                             };
                             return (v10, v12, v11)
                         };
@@ -278,13 +274,13 @@ module 0x1::smart_table {
                 break
             };
         };
-        (v3, 0x1::option::none<u64>(), 0x1::option::none<u64>())
+        (v4, 0x1::option::none<u64>(), 0x1::option::none<u64>())
     }
-    
+
     public fun load_factor<T0, T1>(arg0: &SmartTable<T0, T1>) : u64 {
         arg0.size * 100 / arg0.num_buckets / arg0.target_bucket_size
     }
-    
+
     public fun new_with_config<T0: copy + drop + store, T1: store>(arg0: u64, arg1: u8, arg2: u64) : SmartTable<T0, T1> {
         assert!(arg1 <= 100, 0x1::error::invalid_argument(5));
         let v0 = 0x1::table_with_length::new<u64, vector<Entry<T0, T1>>>();
@@ -295,11 +291,11 @@ module 0x1::smart_table {
             arg1
         };
         let v2 = SmartTable<T0, T1>{
-            buckets              : v0, 
-            num_buckets          : 1, 
-            level                : 0, 
-            size                 : 0, 
-            split_load_threshold : v1, 
+            buckets              : v0,
+            num_buckets          : 1,
+            level                : 0,
+            size                 : 0,
+            split_load_threshold : v1,
             target_bucket_size   : arg2,
         };
         if (arg0 == 0) {
@@ -307,15 +303,16 @@ module 0x1::smart_table {
         };
         while (arg0 > 1) {
             arg0 = arg0 - 1;
-            split_one_bucket<T0, T1>(&mut v2);
+            let v3 = &mut v2;
+            split_one_bucket<T0, T1>(v3);
         };
         v2
     }
-    
+
     public fun num_buckets<T0, T1>(arg0: &SmartTable<T0, T1>) : u64 {
         arg0.num_buckets
     }
-    
+
     fun split_one_bucket<T0, T1>(arg0: &mut SmartTable<T0, T1>) {
         let v0 = arg0.num_buckets;
         let v1 = v0 ^ 1 << arg0.level;
@@ -345,7 +342,7 @@ module 0x1::smart_table {
         let v6 = 0x1::vector::trim_reverse<Entry<T0, T1>>(v2, v5);
         0x1::table_with_length::add<u64, vector<Entry<T0, T1>>>(&mut arg0.buckets, v0, v6);
     }
-    
+
     public fun to_simple_map<T0: copy + drop + store, T1: copy + store>(arg0: &SmartTable<T0, T1>) : 0x1::simple_map::SimpleMap<T0, T1> {
         let v0 = 0x1::simple_map::new<T0, T1>();
         let v1 = 0;
@@ -365,17 +362,17 @@ module 0x1::smart_table {
         };
         v0
     }
-    
+
     public fun update_split_load_threshold<T0, T1>(arg0: &mut SmartTable<T0, T1>, arg1: u8) {
         assert!(arg1 <= 100 && arg1 > 0, 0x1::error::invalid_argument(5));
         arg0.split_load_threshold = arg1;
     }
-    
+
     public fun update_target_bucket_size<T0, T1>(arg0: &mut SmartTable<T0, T1>, arg1: u64) {
         assert!(arg1 > 0, 0x1::error::invalid_argument(6));
         arg0.target_bucket_size = arg1;
     }
-    
+
     public fun upsert<T0: copy + drop, T1: drop>(arg0: &mut SmartTable<T0, T1>, arg1: T0, arg2: T1) {
         if (contains<T0, T1>(arg0, arg1)) {
             *borrow_mut<T0, T1>(arg0, arg1) = arg2;
@@ -383,6 +380,6 @@ module 0x1::smart_table {
             add<T0, T1>(arg0, arg1, arg2);
         };
     }
-    
+
     // decompiled from Move bytecode v7
 }
