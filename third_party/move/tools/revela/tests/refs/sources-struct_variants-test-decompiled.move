@@ -289,40 +289,39 @@ module 0xc0ffee::m {
         //       $t9 := borrow_variant_field<m::Option<m::Option<u64>>::Some>.value($t0)
         //       $t10 := test_variant m::Option<u64>::Some($t9)
         //       if ($t10) {
-        //         goto L11
+        //         $t11 := true
+        //         $t1 := $t11
         //       } else {
+        //         $t12 := 15621340914461310977
+        //         abort($t12)
+        //         // aborted path
         //       }
         //     } else {
         //       drop($t0)
+        //       $t12 := 15621340914461310977
+        //       abort($t12)
+        //       // aborted path
         //     }
-        //     $t12 := 15621340914461310977
-        //     abort($t12)
-        //     // aborted path
-        //     // label 11 @59
-        //     $t11 := true
-        //     $t1 := $t11
         //   }
         //   return $t1
         //   // returned path
         //
         // End Bytecode
-        let v0 = if (test_variant(arg0, Option<Option<u64>>::(None))) {
+        if (test_variant(arg0, Option<Option<u64>>::(None))) {
             false
         } else {
+            let v0;
             if (test_variant(arg0, Option<Option<u64>>::(Some))) {
                 if (test_variant(&arg0.value, Option<u64>::(None))) {
-                    return false
+                    v0 = false;
+                    return v0
                 };
             };
-            if (test_variant(arg0, Option<Option<u64>>::(Some))) {
-                if (test_variant(&arg0.value, Option<u64>::(Some))) {
-                    /* goto 11 */
-                };
-            };
-            abort 15621340914461310977;
-            /* label 11 */
-        };
-        false
+            assert!(test_variant(arg0, Option<Option<u64>>::(Some)), 15621340914461310977);
+            assert!(test_variant(&arg0.value, Option<u64>::(Some)), 15621340914461310977);
+            v0 = true;
+            v0
+        }
     }
 
     public fun outer_value(arg0: Outer) : u64 {

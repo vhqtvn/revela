@@ -10,7 +10,7 @@ use move_stackless_bytecode::stackless_bytecode::Operation;
 
 use crate::decompiler::cfg::{
     algo::blocks_stackless::AnnotatedBytecode, metadata::WithMetadata,
-    stackless_variants_test_simplifier::StacklessVariantTestVariantsData,
+    stackless_variants_transfrorms::StacklessVariantTestVariantsData,
 };
 
 use super::{Expr, ExprNodeOperation, ExprNodeRef, ReturnValueHint, StacklessEvaluationContext};
