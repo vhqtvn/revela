@@ -33,11 +33,9 @@ pub fn decompile(
         .iter()
         .map(|x| x.clone().with_metadata())
         .collect::<Vec<_>>();
-    debug_dump_blocks(&TopoSortedBlocks::from_blocks(blocks.clone(), 0), false);
     duplicate_match_aborts(&mut blocks)?;
     annotate_dummy_dispatch_blocks(&mut blocks)?;
 
-    debug_dump_blocks(&TopoSortedBlocks::from_blocks(blocks.clone(), 0), false);
     let mut blocks = algo::topo::topo_sort(blocks)?;
     rewrite_labels(&mut blocks)?;
 

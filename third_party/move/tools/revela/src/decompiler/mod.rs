@@ -596,7 +596,6 @@ impl<'a> Decompiler<'a> {
                         &naming,
                     );
 
-                    println!("Decompiling function: {}", f.get_name_str());
                     let mut code_unit = sgen.generate(&self.optimizer_settings)?;
 
                     code_unit.add_indent(1);

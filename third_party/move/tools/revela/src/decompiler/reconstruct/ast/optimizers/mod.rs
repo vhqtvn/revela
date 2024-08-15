@@ -40,6 +40,7 @@ impl Default for OptimizerSettings {
 pub(crate) struct OptimizerResult {
     pub unit: DecompiledCodeUnitRef,
     pub referenced_variables: HashSet<usize>,
+    #[allow(dead_code)]
     pub renamed_variables: HashMap<usize, usize>,
 }
 

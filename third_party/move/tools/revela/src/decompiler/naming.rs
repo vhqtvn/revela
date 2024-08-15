@@ -78,6 +78,7 @@ impl<'a> Naming<'a> {
         "_".to_string()
     }
 
+    #[allow(dead_code)]
     pub fn is_variable_referenced(&self, idx: usize) -> bool {
         if let Some(referenced_vairables) = &self.referenced_vairables {
             referenced_vairables.contains(&idx)

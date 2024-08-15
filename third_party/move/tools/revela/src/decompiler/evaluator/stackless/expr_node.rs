@@ -1392,6 +1392,7 @@ impl Expr {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_borrow(&self) -> Option<Expr> {
         match &self.node.borrow().operation {
             ExprNodeOperation::BorrowLocal(inner, ..) => {
@@ -1401,6 +1402,7 @@ impl Expr {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_local_variable(&self) -> Option<usize> {
         match &self.node.borrow().operation {
             ExprNodeOperation::LocalVariable(idx) => Some(*idx),

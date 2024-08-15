@@ -9,7 +9,7 @@ use move_model::ty::Type;
 use move_stackless_bytecode::stackless_bytecode::Operation;
 
 use crate::decompiler::cfg::{
-    algo::blocks_stackless::AnnotatedBytecode, metadata::WithMetadata,
+    algo::blocks_stackless::AnnotatedBytecode,
     stackless_variants_transfrorms::StacklessVariantTestVariantsData,
 };
 
