@@ -271,10 +271,6 @@ impl DecompiledCodeUnit {
                     is_decl,
                     ..
                 } => {
-                    // if debug
-                    if !cfg!(debug_assertions) {
-                        panic!("Invariant Exception: PossibleAssignStatement is not meant to be used in final source code generation")
-                    }
                     if *is_decl {
                         to_decl_source(
                             &mut source,
