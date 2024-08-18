@@ -75,14 +75,15 @@ module 0x1::dispatchable_fungible_asset {
         let v0 = 0x1::fungible_asset::withdraw_dispatch_function<T0>(arg1);
         if (0x1::option::is_some<0x1::function_info::FunctionInfo>(&v0)) {
             assert!(0x1::features::dispatchable_fungible_asset_enabled(), 0x1::error::aborted(3));
-            let v2 = 0x1::option::borrow<0x1::function_info::FunctionInfo>(&v0);
-            0x1::function_info::load_module_from_function(v2);
-            let v3 = 0x1::fungible_asset::store_metadata<T0>(arg1);
-            let v4 = 0x1::object::object_address<0x1::fungible_asset::Metadata>(&v3);
-            assert!(exists<TransferRefStore>(v4), 0x1::error::not_found(1));
-            let v5 = arg2 <= 0x1::fungible_asset::balance<T0>(arg1) - 0x1::fungible_asset::balance<T0>(arg1);
-            assert!(v5, 0x1::error::aborted(2));
-            dispatchable_withdraw<T0>(arg1, arg2, &borrow_global<TransferRefStore>(v4).transfer_ref, v2)
+            let v2 = 0x1::fungible_asset::balance<T0>(arg1);
+            let v3 = 0x1::option::borrow<0x1::function_info::FunctionInfo>(&v0);
+            0x1::function_info::load_module_from_function(v3);
+            let v4 = 0x1::fungible_asset::store_metadata<T0>(arg1);
+            let v5 = 0x1::object::object_address<0x1::fungible_asset::Metadata>(&v4);
+            assert!(exists<TransferRefStore>(v5), 0x1::error::not_found(1));
+            let v6 = dispatchable_withdraw<T0>(arg1, arg2, &borrow_global<TransferRefStore>(v5).transfer_ref, v3);
+            assert!(arg2 <= v2 - 0x1::fungible_asset::balance<T0>(arg1), 0x1::error::aborted(2));
+            v6
         } else {
             0x1::fungible_asset::withdraw_internal(0x1::object::object_address<T0>(&arg1), arg2)
         }

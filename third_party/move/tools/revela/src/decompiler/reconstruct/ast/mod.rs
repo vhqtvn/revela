@@ -4,6 +4,8 @@
 
 use std::collections::HashSet;
 
+use move_model::well_known;
+
 use self::expr::{DecompiledExpr, DecompiledExprRef};
 
 use super::super::naming::Naming;
@@ -60,6 +62,8 @@ pub(crate) enum DecompiledCodeItem {
         variables: Vec<(String, usize)>,
         fields_count: usize,
         value: DecompiledExprRef,
+        #[allow(dead_code)]
+        is_enum: bool,
     },
     Statement {
         expr: DecompiledExprRef,
@@ -379,8 +383,48 @@ impl DecompiledCodeUnit {
                     fields_count: _,
                     variables,
                     value,
+                    is_enum,
                 } => {
-                    if variables.len() >= 2 {
+                    if *is_enum {
+                        if !variables.is_empty() {
+                            let variables_brackets = if variables.len() > 1 {
+                                ("(", ")")
+                            } else {
+                                ("", "")
+                            };
+                            source.add_line(format!(
+                                "let {}{}{} = match ({}) {{ {}{{ {} }} => {}{}{}, _ => abort {} }};",
+                                variables_brackets.0,
+                                variables
+                                    .iter()
+                                    .map(|(_, v)| naming.variable(*v))
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                                variables_brackets.1,
+                                value.to_source(naming, true)?,
+                                extract_enum_variant(structure_visible_name),
+                                variables
+                                    .iter()
+                                    .map(|(k, _)| k.clone())
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                                variables_brackets.0,
+                                variables
+                                    .iter()
+                                    .map(|(k, _)| k.clone())
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                                variables_brackets.1,
+                                well_known::INCOMPLETE_MATCH_ABORT_CODE
+                            ));
+                        } else {
+                            source.add_line(format!(
+                                "match ({}) {{ {} => (), _ => abort 0 }};",
+                                value.to_source(naming, true)?,
+                                extract_enum_variant(structure_visible_name),
+                            ));
+                        }
+                    } else if variables.len() >= 2 {
                         source.add_line(format!("let {} {{", structure_visible_name));
                         let mut inner_unit = SourceCodeUnit::new(1);
                         let k_max_width = variables.iter().map(|(k, _)| k.len()).max().unwrap_or(0);
@@ -449,11 +493,7 @@ impl DecompiledCodeUnit {
                     if_b.add_indent(1);
                     source.add_block(if_b);
 
-                    let else_b = to_source_maybe_else_chain(
-                        else_unit,
-                        naming,
-                        &in_termination,
-                    )?;
+                    let else_b = to_source_maybe_else_chain(else_unit, naming, &in_termination)?;
 
                     if !else_b.is_empty() {
                         source.add_block(else_b);
@@ -537,9 +577,7 @@ fn to_source_maybe_else_chain(
     let mut unit = SourceCodeUnit::new(0);
 
     if !should_follow_chain(else_unit, &in_termination) {
-        let mut else_b = else_unit
-            .to_source(naming, false)
-            .unwrap();
+        let mut else_b = else_unit.to_source(naming, false).unwrap();
         if !else_b.is_empty() {
             else_b.add_indent(1);
             unit.add_line("} else {".to_string());
@@ -565,8 +603,7 @@ fn to_source_maybe_else_chain(
         if_b.add_indent(1);
         unit.add_block(if_b);
 
-        let else_b =
-            to_source_maybe_else_chain(&next_else_unit, naming, in_termination)?;
+        let else_b = to_source_maybe_else_chain(&next_else_unit, naming, in_termination)?;
 
         if !else_b.is_empty() {
             unit.add_block(else_b);
@@ -606,10 +643,7 @@ fn to_decl_source(
     Ok(())
 }
 
-fn let_assignment_or_empty(
-    result_variables: &Vec<usize>,
-    naming: &Naming,
-) -> String {
+fn let_assignment_or_empty(result_variables: &Vec<usize>, naming: &Naming) -> String {
     if result_variables.is_empty() {
         String::new()
     } else {
@@ -628,4 +662,12 @@ fn let_assignment_or_empty(
             format!("let {} = ", vars)
         }
     }
+}
+
+fn extract_enum_variant(full_qualified_name: &str) -> String {
+    full_qualified_name
+        .split("::")
+        .last()
+        .unwrap_or(&full_qualified_name)
+        .to_string()
 }

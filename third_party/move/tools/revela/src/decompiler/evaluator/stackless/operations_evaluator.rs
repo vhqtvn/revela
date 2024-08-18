@@ -5,6 +5,7 @@
 use std::mem::MaybeUninit;
 
 use anyhow::Ok;
+use itertools::Itertools;
 use move_model::ty::Type;
 use move_stackless_bytecode::stackless_bytecode::Operation;
 
@@ -191,17 +192,34 @@ impl OperationEvaluator for &Operation {
                     } else {
                         vec![vid.clone()]
                     };
+                let full_variants_count = struct_env.get_variants().collect_vec().len();
 
-                let variant_names: Vec<_> = variants
+                let variant_names_and_types: Vec<_> = variants
                     .iter()
-                    .map(|v| v.display(struct_env.symbol_pool()).to_string())
+                    .map(|v| {
+                        let fields = struct_env.get_fields_of_variant(*v);
+                        (
+                            v.display(struct_env.symbol_pool()).to_string(),
+                            fields
+                                .map(|x| {
+                                    (
+                                        x.get_name().display(struct_env.symbol_pool()).to_string(),
+                                        x.get_type().clone(),
+                                    )
+                                })
+                                .collect(),
+                        )
+                    })
                     .collect();
 
                 Ok(OperationEvaluatorResult {
                     cannot_keep: false,
                     expr: ExprNodeOperation::VariantTest(
                         enum_name,
-                        variant_names,
+                        (
+                            variants.len() == full_variants_count,
+                            variant_names_and_types,
+                        ),
                         only_one(args, "test_variant")?,
                         types.clone(),
                     )

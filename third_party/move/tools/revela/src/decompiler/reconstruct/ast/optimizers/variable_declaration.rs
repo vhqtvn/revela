@@ -623,12 +623,14 @@ fn apply_variable_declaration(
                 fields_count,
                 variables,
                 value,
+                is_enum,
             } => {
                 new_unit.blocks.push(I::AssignStructureStatement {
                     structure_visible_name: structure_visible_name.clone(),
                     fields_count: *fields_count,
                     variables: variables.clone(),
                     value: value.commit_pending_variables(should_declare),
+                    is_enum: *is_enum,
                 });
             }
             I::Statement { expr } => {

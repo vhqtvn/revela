@@ -98,12 +98,13 @@ module 0x1::smart_vector {
         let v0 = &mut arg0.big_vec;
         if (0x1::option::is_some<0x1::big_vector::BigVector<T0>>(v0)) {
             let v2 = 0x1::option::extract<0x1::big_vector::BigVector<T0>>(v0);
+            let v1 = 0x1::big_vector::pop_back<T0>(&mut v2);
             if (0x1::big_vector::is_empty<T0>(&v2)) {
                 0x1::big_vector::destroy_empty<T0>(v2);
             } else {
                 0x1::option::fill<0x1::big_vector::BigVector<T0>>(v0, v2);
             };
-            0x1::big_vector::pop_back<T0>(&mut v2)
+            v1
         } else {
             0x1::vector::pop_back<T0>(&mut arg0.inline_vec)
         }
@@ -141,12 +142,13 @@ module 0x1::smart_vector {
         } else {
             let v2 = &mut arg0.big_vec;
             let v3 = 0x1::option::extract<0x1::big_vector::BigVector<T0>>(v2);
+            let v4 = 0x1::big_vector::remove<T0>(&mut v3, arg1 - v0);
             if (0x1::big_vector::is_empty<T0>(&v3)) {
                 0x1::big_vector::destroy_empty<T0>(v3);
             } else {
                 0x1::option::fill<0x1::big_vector::BigVector<T0>>(v2, v3);
             };
-            0x1::big_vector::remove<T0>(&mut v3, arg1 - v0)
+            v4
         }
     }
 
@@ -218,21 +220,23 @@ module 0x1::smart_vector {
         let v3 = &mut arg0.inline_vec;
         if (arg1 >= v1) {
             let v5 = 0x1::option::extract<0x1::big_vector::BigVector<T0>>(v2);
+            let v4 = 0x1::big_vector::swap_remove<T0>(&mut v5, arg1 - v1);
             if (0x1::big_vector::is_empty<T0>(&v5)) {
                 0x1::big_vector::destroy_empty<T0>(v5);
             } else {
                 0x1::option::fill<0x1::big_vector::BigVector<T0>>(v2, v5);
             };
-            0x1::big_vector::swap_remove<T0>(&mut v5, arg1 - v1)
+            v4
         } else {
             if (v1 < v0) {
                 let v6 = 0x1::option::extract<0x1::big_vector::BigVector<T0>>(v2);
+                let v7 = 0x1::big_vector::pop_back<T0>(&mut v6);
                 if (0x1::big_vector::is_empty<T0>(&v6)) {
                     0x1::big_vector::destroy_empty<T0>(v6);
                 } else {
                     0x1::option::fill<0x1::big_vector::BigVector<T0>>(v2, v6);
                 };
-                0x1::vector::push_back<T0>(v3, 0x1::big_vector::pop_back<T0>(&mut v6));
+                0x1::vector::push_back<T0>(v3, v7);
             };
             0x1::vector::swap_remove<T0>(v3, arg1)
         }

@@ -64,8 +64,8 @@ pub enum ExprNodeOperation {
         Vec<Type>,
     ),
     VariantTest(
-        String,      /* enum name */
-        Vec<String>, /* variant name */
+        String,                                     /* enum name */
+        (bool, Vec<(String, Vec<(String, Type)>)>), /* variant name, corresponding fields and types */
         ExprNodeRef,
         Vec<Type>,
     ),
@@ -175,29 +175,29 @@ impl ExprNodeOperation {
                     types.clone(),
                 )
             }
-            ExprNodeOperation::VariantPack(name, vname, args, types) => {
+            ExprNodeOperation::VariantPack(name, variant_name, args, types) => {
                 ExprNodeOperation::VariantPack(
                     name.clone(),
-                    vname.clone(),
+                    variant_name.clone(),
                     args.iter()
                         .map(|x| ((x.0.clone(), x.1.borrow().copy_as_ref())))
                         .collect(),
                     types.clone(),
                 )
             }
-            ExprNodeOperation::VariantUnpack(name, vname, keys, val, types) => {
+            ExprNodeOperation::VariantUnpack(name, variant_name, keys, val, types) => {
                 ExprNodeOperation::VariantUnpack(
                     name.clone(),
-                    vname.clone(),
+                    variant_name.clone(),
                     keys.clone(),
                     val.borrow().copy_as_ref(),
                     types.clone(),
                 )
             }
-            ExprNodeOperation::VariantTest(name, vname, val, types) => {
+            ExprNodeOperation::VariantTest(name, enum_info, val, types) => {
                 ExprNodeOperation::VariantTest(
                     name.clone(),
-                    vname.clone(),
+                    enum_info.clone(),
                     val.borrow().copy_as_ref(),
                     types.clone(),
                 )
@@ -490,22 +490,12 @@ impl ExprNodeOperation {
                     .collect::<Result<Vec<_>, _>>()?
                     .join(", ")
             )),
-            ExprNodeOperation::StructUnpack(name, keys, val, types) => Ok(format!(
-                "{}{}{{{}}} = {}",
-                name,
-                Self::typeparams_to_source(types, naming),
-                keys.iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<String>>()
-                    .join(", "),
-                val.borrow()
-                    .to_source_with_ctx(naming, &ctx.with_syntactical_brackets(true))?
-            )),
-            ExprNodeOperation::VariantPack(name, vname, args, types) => Ok(format!(
+            ExprNodeOperation::StructUnpack(_name, _keys, _val, _types) => unreachable!(),
+            ExprNodeOperation::VariantPack(name, variant_name, args, types) => Ok(format!(
                 "{}{}::{}{{{}}}",
                 name,
                 Self::typeparams_to_source(types, naming),
-                vname,
+                variant_name,
                 args.iter()
                     .map(|x| x
                         .1
@@ -515,26 +505,41 @@ impl ExprNodeOperation {
                     .collect::<Result<Vec<_>, _>>()?
                     .join(", ")
             )),
-            ExprNodeOperation::VariantUnpack(name, vname, keys, val, types) => Ok(format!(
-                "{}{}::{}{{{}}} = {}",
-                name,
-                Self::typeparams_to_source(types, naming),
-                vname,
-                keys.iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<String>>()
-                    .join(", "),
-                val.borrow()
-                    .to_source_with_ctx(naming, &ctx.with_syntactical_brackets(true))?
-            )),
-            ExprNodeOperation::VariantTest(name, vname, val, types) => Ok(format!(
-                "test_variant({}, {}{}::({}))",
-                val.borrow()
-                    .to_source_with_ctx(naming, &ctx.with_syntactical_brackets(true))?,
-                name,
-                Self::typeparams_to_source(types, naming),
-                vname.join("|"),
-            )),
+            ExprNodeOperation::VariantUnpack(_name, _variant, _keys, _val, _types) => {
+                unreachable!()
+            }
+            ExprNodeOperation::VariantTest(_name, (full_match, variants), val, _types) => {
+                Ok(format!(
+                    "match ({}) {{ {}{} }}",
+                    val.borrow()
+                        .to_source_with_ctx(naming, &ctx.with_syntactical_brackets(false))?,
+                    // no need to prefix the enum name
+                    // name,
+                    // Self::typeparams_to_source(types, naming),
+                    variants
+                        .iter()
+                        .map(|v| {
+                            format!(
+                                "{}{} => true",
+                                v.0,
+                                if v.1.is_empty() {
+                                    "".to_string()
+                                } else {
+                                    format!(
+                                        "{{{}}}",
+                                        v.1.iter()
+                                            .map(|x| format!("{}:_", x.0))
+                                            .collect::<Vec<_>>()
+                                            .join(",")
+                                    )
+                                }
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    if *full_match { "" } else { ", _ => false" }
+                ))
+            }
             ExprNodeOperation::VariableSnapshot { value, .. } => {
                 value.borrow().to_source_with_ctx(naming, &ctx)
             }
@@ -901,10 +906,10 @@ impl ExprNodeOperation {
                 )
                 .to_node()
             }
-            ExprNodeOperation::VariantPack(name, vname, fields, typs) => {
+            ExprNodeOperation::VariantPack(name, variant_name, fields, typs) => {
                 ExprNodeOperation::VariantPack(
                     name.clone(),
-                    vname.clone(),
+                    variant_name.clone(),
                     fields
                         .iter()
                         .map(|x| {
@@ -918,19 +923,19 @@ impl ExprNodeOperation {
                 )
                 .to_node()
             }
-            ExprNodeOperation::VariantTest(name, vname, val, typs) => {
+            ExprNodeOperation::VariantTest(name, variant_name, val, typs) => {
                 ExprNodeOperation::VariantTest(
                     name.clone(),
-                    vname.clone(),
+                    variant_name.clone(),
                     val.borrow().commit_pending_variables(variables),
                     typs.clone(),
                 )
                 .to_node()
             }
-            ExprNodeOperation::VariantUnpack(name, vname, fields_names, expr, typs) => {
+            ExprNodeOperation::VariantUnpack(name, enum_info, fields_names, expr, typs) => {
                 ExprNodeOperation::VariantUnpack(
                     name.clone(),
-                    vname.clone(),
+                    enum_info.clone(),
                     fields_names.clone(),
                     expr.borrow().commit_pending_variables(variables),
                     typs.clone(),
@@ -1176,7 +1181,7 @@ impl Display for ExprNodeOperation {
                     val.borrow().to_string()
                 )
             }
-            ExprNodeOperation::VariantPack(name, vname, args, types) => {
+            ExprNodeOperation::VariantPack(name, variant_name, args, types) => {
                 write!(
                     f,
                     "{}{}::{}{{{}}}",
@@ -1193,14 +1198,14 @@ impl Display for ExprNodeOperation {
                                 .join(", ")
                         )
                     },
-                    vname,
+                    variant_name,
                     args.iter()
                         .map(|x| format!("{}: {}", x.0, x.1.borrow().to_string()))
                         .collect::<Vec<String>>()
                         .join(", ")
                 )
             }
-            ExprNodeOperation::VariantUnpack(name, vname, keys, val, types) => {
+            ExprNodeOperation::VariantUnpack(name, variant_name, keys, val, types) => {
                 write!(
                     f,
                     "{}{}::{}{{{}}} = {}",
@@ -1217,7 +1222,7 @@ impl Display for ExprNodeOperation {
                                 .join(", ")
                         )
                     },
-                    vname,
+                    variant_name,
                     keys.iter()
                         .map(|x| x.to_string())
                         .collect::<Vec<String>>()
@@ -1225,10 +1230,10 @@ impl Display for ExprNodeOperation {
                     val.borrow().to_string()
                 )
             }
-            ExprNodeOperation::VariantTest(name, vname, val, types) => {
+            ExprNodeOperation::VariantTest(name, enum_info, val, types) => {
                 write!(
                     f,
-                    "test_variant({}, {}{}::({}))",
+                    "variant_test({}, {}{}::({}))",
                     val.borrow().to_string(),
                     name,
                     if types.is_empty() {
@@ -1243,7 +1248,12 @@ impl Display for ExprNodeOperation {
                                 .join(", ")
                         )
                     },
-                    vname.join("|"),
+                    enum_info
+                        .1
+                        .iter()
+                        .map(|x| x.0.clone())
+                        .collect::<Vec<_>>()
+                        .join("|"),
                 )
             }
             ExprNodeOperation::VariableSnapshot {

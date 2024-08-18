@@ -260,6 +260,7 @@ pub(crate) fn process_variable_alias(
                 fields_count,
                 value,
                 structure_visible_name,
+                is_enum,
             } => {
                 let variables: Vec<_> = variables
                     .iter()
@@ -277,6 +278,7 @@ pub(crate) fn process_variable_alias(
                         fields_count: *fields_count,
                         value,
                         structure_visible_name: structure_visible_name.clone(),
+                        is_enum: *is_enum,
                     });
             }
 

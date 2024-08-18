@@ -130,7 +130,7 @@ impl<'a> SourceGen<'a> {
         }
 
         let variable_usage_runner =
-            stackless_var_usage::StacklessVarUsagePipeline::new(self.func_env.module_env.env);
+            stackless_var_usage::StacklessVarUsagePipeline::new(self.func_env, self.func_target);
         self.var_usage = variable_usage_runner.run(self.body)?;
 
         let mut cfg_context = StructureCtx::new();
@@ -699,14 +699,16 @@ impl<'a> SourceGen<'a> {
 
                 Call(_, dsts, op, srcs, _) => {
                     use super::evaluator::stackless::expr_node::ExprNodeOperation as E;
-                    if let Some((name, fields, val)) =
+                    if let Some((is_enum, name, fields, val)) =
                         match &result.value().borrow().operation {
                             E::StructUnpack(name, fields, val, types) => Some((
+                                false,
                                 format!("{}{}", name, self.types_specifier_str(types)),
                                 fields,
                                 val,
                             )),
                             E::VariantUnpack(name, vname, fields, val, types) => Some((
+                                true,
                                 format!("{}{}::{}", name, self.types_specifier_str(types), vname),
                                 fields,
                                 val,
@@ -724,6 +726,7 @@ impl<'a> SourceGen<'a> {
                                     val.borrow().operation.to_expr(),
                                 )
                                 .boxed(),
+                                is_enum,
                             });
                         } else {
                             codeunit.add(DecompiledCodeItem::AssignStructureStatement {
@@ -738,6 +741,7 @@ impl<'a> SourceGen<'a> {
                                     val.borrow().operation.to_expr(),
                                 )
                                 .boxed(),
+                                is_enum,
                             });
 
                             dsts.iter().for_each(|&dst| {

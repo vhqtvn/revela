@@ -567,7 +567,8 @@ module 0x1337::token {
             let v3 = 0x1::table::borrow_mut<TokenId, Token>(&mut v0.tokens, arg1.id);
             merge(v3, arg1);
         } else {
-            0x1::table::add<TokenId, Token>(&mut v0.tokens, arg1.id, arg1);
+            let v4 = arg1.id;
+            0x1::table::add<TokenId, Token>(&mut v0.tokens, v4, arg1);
         };
     }
 
@@ -858,25 +859,26 @@ module 0x1337::token {
             assert!(v2.supply + arg3 <= v2.maximum, 0x1::error::invalid_argument(7));
             v2.supply = v2.supply + arg3;
         };
+        let v3 = create_token_id(arg2, 0);
         if (0x1::features::module_event_migration_enabled()) {
-            let v3 = MintToken{
+            let v4 = MintToken{
                 id     : arg2,
                 amount : arg3,
             };
-            0x1::event::emit<MintToken>(v3);
+            0x1::event::emit<MintToken>(v4);
         };
-        let v4 = &mut borrow_global_mut<Collections>(v0).mint_token_events;
-        let v5 = MintTokenEvent{
+        let v5 = &mut borrow_global_mut<Collections>(v0).mint_token_events;
+        let v6 = MintTokenEvent{
             id     : arg2,
             amount : arg3,
         };
-        0x1::event::emit_event<MintTokenEvent>(v4, v5);
-        let v6 = Token{
-            id               : create_token_id(arg2, 0),
+        0x1::event::emit_event<MintTokenEvent>(v5, v6);
+        let v7 = Token{
+            id               : v3,
             amount           : arg3,
             token_properties : 0x1337::property_map::empty(),
         };
-        direct_deposit(arg1, v6);
+        direct_deposit(arg1, v7);
     }
 
     public fun mutate_collection_description(arg0: &signer, arg1: 0x1::string::String, arg2: 0x1::string::String) acquires Collections {

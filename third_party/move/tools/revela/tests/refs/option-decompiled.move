@@ -42,8 +42,9 @@ module 0x1::option {
     public fun destroy_some<T0>(arg0: Option<T0>) : T0 {
         assert!(is_some<T0>(&arg0), 262145);
         let Option<T0> { vec: v0 } = arg0;
+        let v1 = 0x1::vector::pop_back<T0>(&mut v0);
         0x1::vector::destroy_empty<T0>(v0);
-        0x1::vector::pop_back<T0>(&mut v0)
+        v1
     }
 
     public fun destroy_with_default<T0: drop>(arg0: Option<T0>, arg1: T0) : T0 {

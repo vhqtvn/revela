@@ -111,16 +111,17 @@ module 0x1::ristretto255_elgamal {
         if (0x1::vector::length<u8>(&arg0) != 64) {
             return 0x1::option::none<Ciphertext>()
         };
-        let v0 = 0x1::ristretto255::new_point_from_bytes(arg0);
-        let v1 = 0x1::ristretto255::new_point_from_bytes(0x1::vector::trim<u8>(&mut arg0, 32));
-        let v2 = 0x1::option::is_some<0x1::ristretto255::RistrettoPoint>(&mut v0);
-        if (v2 && 0x1::option::is_some<0x1::ristretto255::RistrettoPoint>(&mut v1)) {
-            let v4 = 0x1::option::extract<0x1::ristretto255::RistrettoPoint>(&mut v0);
-            let v5 = Ciphertext{
-                left  : v4,
-                right : 0x1::option::extract<0x1::ristretto255::RistrettoPoint>(&mut v1),
+        let v0 = 0x1::vector::trim<u8>(&mut arg0, 32);
+        let v1 = 0x1::ristretto255::new_point_from_bytes(arg0);
+        let v2 = 0x1::ristretto255::new_point_from_bytes(v0);
+        let v3 = 0x1::option::is_some<0x1::ristretto255::RistrettoPoint>(&mut v1);
+        if (v3 && 0x1::option::is_some<0x1::ristretto255::RistrettoPoint>(&mut v2)) {
+            let v5 = 0x1::option::extract<0x1::ristretto255::RistrettoPoint>(&mut v1);
+            let v6 = Ciphertext{
+                left  : v5,
+                right : 0x1::option::extract<0x1::ristretto255::RistrettoPoint>(&mut v2),
             };
-            0x1::option::some<Ciphertext>(v5)
+            0x1::option::some<Ciphertext>(v6)
         } else {
             0x1::option::none<Ciphertext>()
         }

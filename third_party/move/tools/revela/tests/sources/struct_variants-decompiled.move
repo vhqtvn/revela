@@ -33,35 +33,32 @@ module 0xc0ffee::m {
 
     public fun inner_value(arg0: Inner) : u64 {
         let v0 = &arg0;
-        if (test_variant(v0, Inner::(Inner1))) {
-            let Inner::Inner1 { x: v1 } = arg0;
+        if (match (v0) { Inner1{x:_} => true, _ => false }) {
+            let v1 = match (arg0) { Inner1{ x } => x, _ => abort 15621340914461310977 };
             v1
         } else {
-            assert!(test_variant(v0, Inner::(Inner2)), 15621340914461310977);
-            let Inner::Inner2 {
-                x : v2,
-                y : v3,
-            } = arg0;
+            assert!(match (v0) { Inner2{x:_,y:_} => true, _ => false }, 15621340914461310977);
+            let (v2, v3) = match (arg0) { Inner2{ x, y } => (x, y), _ => abort 15621340914461310977 };
             v2 + v3
         }
     }
 
     public fun is_inner1(arg0: &Inner) : bool {
-        test_variant(arg0, Inner::(Inner1))
+        match (arg0) { Inner1{x:_} => true, _ => false }
     }
 
     public fun is_some<T0>(arg0: &Option<T0>) : bool {
-        if (test_variant(arg0, Option<T0>::(None))) {
+        if (match (arg0) { None => true, _ => false }) {
             false
         } else {
-            assert!(test_variant(arg0, Option<T0>::(Some)), 15621340914461310977);
+            assert!(match (arg0) { Some{value:_} => true, _ => false }, 15621340914461310977);
             true
         }
     }
 
     public fun is_some_dropped<T0: drop>(arg0: Option<T0>) : bool {
-        if (test_variant(&arg0, Option<T0>::(None))) {
-            let Option<T0>::None {  } = arg0;
+        if (match (&arg0) { None => true, _ => false }) {
+            match (arg0) { None => (), _ => abort 0 };
             false
         } else {
             true
@@ -69,18 +66,18 @@ module 0xc0ffee::m {
     }
 
     public fun is_some_specialized(arg0: &Option<Option<u64>>) : bool {
-        if (test_variant(arg0, Option<Option<u64>>::(None))) {
+        if (match (arg0) { None => true, _ => false }) {
             false
         } else {
             let v0;
-            if (test_variant(arg0, Option<Option<u64>>::(Some))) {
-                if (test_variant(&arg0.value, Option<u64>::(None))) {
+            if (match (arg0) { Some{value:_} => true, _ => false }) {
+                if (match (&arg0.value) { None => true, _ => false }) {
                     v0 = false;
                     return v0
                 };
             };
-            assert!(test_variant(arg0, Option<Option<u64>>::(Some)), 15621340914461310977);
-            assert!(test_variant(&arg0.value, Option<u64>::(Some)), 15621340914461310977);
+            assert!(match (arg0) { Some{value:_} => true, _ => false }, 15621340914461310977);
+            assert!(match (&arg0.value) { Some{value:_} => true, _ => false }, 15621340914461310977);
             v0 = true;
             v0
         }
@@ -88,18 +85,15 @@ module 0xc0ffee::m {
 
     public fun outer_value(arg0: Outer) : u64 {
         let v0 = &arg0;
-        if (test_variant(v0, Outer::(None))) {
-            let Outer::None {  } = arg0;
+        if (match (v0) { None => true, _ => false }) {
+            match (arg0) { None => (), _ => abort 0 };
             0
-        } else if (test_variant(v0, Outer::(One))) {
-            let Outer::One { i: v2 } = arg0;
+        } else if (match (v0) { One{i:_} => true, _ => false }) {
+            let v2 = match (arg0) { One{ i } => i, _ => abort 15621340914461310977 };
             inner_value(v2)
         } else {
-            assert!(test_variant(v0, Outer::(Two)), 15621340914461310977);
-            let Outer::Two {
-                i : v3,
-                b : v4,
-            } = arg0;
+            assert!(match (v0) { Two{i:_,b:_} => true, _ => false }, 15621340914461310977);
+            let (v3, v4) = match (arg0) { Two{ i, b } => (i, b), _ => abort 15621340914461310977 };
             let v5 = v4;
             inner_value(v3) + v5.x
         }
@@ -107,27 +101,24 @@ module 0xc0ffee::m {
 
     public fun outer_value_nested(arg0: Outer) : u64 {
         let v0 = &arg0;
-        if (test_variant(v0, Outer::(None))) {
-            let Outer::None {  } = arg0;
+        if (match (v0) { None => true, _ => false }) {
+            match (arg0) { None => (), _ => abort 0 };
             0
         } else {
             let v1;
-            if (test_variant(v0, Outer::(One))) {
-                if (test_variant(&v0.i, Inner::(Inner1))) {
-                    let Outer::One { i: v2 } = arg0;
-                    let Inner::Inner1 { x: v1 } = v2;
+            if (match (v0) { One{i:_} => true, _ => false }) {
+                if (match (&v0.i) { Inner1{x:_} => true, _ => false }) {
+                    let v2 = match (arg0) { One{ i } => i, _ => abort 15621340914461310977 };
+                    let v1 = match (v2) { Inner1{ x } => x, _ => abort 15621340914461310977 };
                     return v1
                 };
             };
-            if (test_variant(v0, Outer::(One))) {
-                let Outer::One { i: v3 } = arg0;
+            if (match (v0) { One{i:_} => true, _ => false }) {
+                let v3 = match (arg0) { One{ i } => i, _ => abort 15621340914461310977 };
                 v1 = inner_value(v3);
             } else {
-                assert!(test_variant(v0, Outer::(Two)), 15621340914461310977);
-                let Outer::Two {
-                    i : v4,
-                    b : v5,
-                } = arg0;
+                assert!(match (v0) { Two{i:_,b:_} => true, _ => false }, 15621340914461310977);
+                let (v4, v5) = match (arg0) { Two{ i, b } => (i, b), _ => abort 15621340914461310977 };
                 let v6 = v5;
                 v1 = inner_value(v4) + v6.x;
             };
@@ -137,27 +128,24 @@ module 0xc0ffee::m {
 
     public fun outer_value_with_cond(arg0: Outer) : u64 {
         let v0 = &arg0;
-        if (test_variant(v0, Outer::(None))) {
-            let Outer::None {  } = arg0;
+        if (match (v0) { None => true, _ => false }) {
+            match (arg0) { None => (), _ => abort 0 };
             0
         } else {
             let v1;
-            if (test_variant(v0, Outer::(One))) {
+            if (match (v0) { One{i:_} => true, _ => false }) {
                 if (is_inner1(&v0.i)) {
-                    let Outer::One { i: v2 } = arg0;
+                    let v2 = match (arg0) { One{ i } => i, _ => abort 15621340914461310977 };
                     v1 = inner_value(v2) % 2;
                     return v1
                 };
             };
-            if (test_variant(v0, Outer::(One))) {
-                let Outer::One { i: v3 } = arg0;
+            if (match (v0) { One{i:_} => true, _ => false }) {
+                let v3 = match (arg0) { One{ i } => i, _ => abort 15621340914461310977 };
                 v1 = inner_value(v3);
             } else {
-                assert!(test_variant(v0, Outer::(Two)), 15621340914461310977);
-                let Outer::Two {
-                    i : v4,
-                    b : v5,
-                } = arg0;
+                assert!(match (v0) { Two{i:_,b:_} => true, _ => false }, 15621340914461310977);
+                let (v4, v5) = match (arg0) { Two{ i, b } => (i, b), _ => abort 15621340914461310977 };
                 let v6 = v5;
                 v1 = inner_value(v4) + v6.x;
             };
@@ -166,20 +154,20 @@ module 0xc0ffee::m {
     }
 
     public fun outer_value_with_cond_ref(arg0: &Outer) : bool {
-        if (test_variant(arg0, Outer::(None))) {
+        if (match (arg0) { None => true, _ => false }) {
             false
         } else {
             let v0;
-            if (test_variant(arg0, Outer::(One))) {
+            if (match (arg0) { One{i:_} => true, _ => false }) {
                 if (is_inner1(&arg0.i)) {
                     v0 = true;
                     return v0
                 };
             };
-            if (test_variant(arg0, Outer::(One))) {
+            if (match (arg0) { One{i:_} => true, _ => false }) {
                 v0 = is_inner1(&arg0.i);
             } else {
-                assert!(test_variant(arg0, Outer::(Two)), 15621340914461310977);
+                assert!(match (arg0) { Two{i:_,b:_} => true, _ => false }, 15621340914461310977);
                 v0 = is_inner1(&arg0.i);
             };
             v0
@@ -187,27 +175,22 @@ module 0xc0ffee::m {
     }
 
     fun select_common_fields(arg0: CommonFields) : u64 {
-        let v0 = &arg0;
-        let v1 = if (test_variant(v0, CommonFields::(Foo))) {
-            let CommonFields::Foo {
-                x : _,
-                y : v3,
-            } = arg0;
-            v3
+        let v0 = arg0.x;
+        let v1 = &arg0;
+        let v2 = if (match (v1) { Foo{x:_,y:_} => true, _ => false }) {
+            let (_, v4) = match (arg0) { Foo{ x, y } => (x, y), _ => abort 15621340914461310977 };
+            v4
         } else {
-            assert!(test_variant(v0, CommonFields::(Bar)), 15621340914461310977);
-            let CommonFields::Bar {
-                x : _,
-                z : v5,
-            } = arg0;
-            v5
+            assert!(match (v1) { Bar{x:_,z:_} => true, _ => false }, 15621340914461310977);
+            let (_, v6) = match (arg0) { Bar{ x, z } => (x, z), _ => abort 15621340914461310977 };
+            v6
         };
-        arg0.x + v1
+        v0 + v2
     }
 
     fun select_common_fields_different_offset(arg0: CommonFieldsAtDifferentOffset) : u64 {
         let v0 = &arg0;
-        let v1 = if (test_variant(v0, CommonFieldsAtDifferentOffset::(Bar|Balt))) {
+        let v1 = if (match (v0) { Bar{x:_,z:_} => true, Balt{foo:_,z:_} => true, _ => false }) {
             &v0.z
         } else {
             &v0.z

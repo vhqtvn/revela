@@ -7,6 +7,8 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
+use move_stackless_bytecode::stackless_bytecode::AssignKind;
+
 use super::{
     super::cfg::{
         algo::blocks_stackless::AnnotatedBytecode,
@@ -134,7 +136,8 @@ impl BranchMergeableVar for VarUsage {
 }
 
 pub struct StacklessVarUsagePipeline<'s> {
-    env: &'s move_model::model::GlobalEnv,
+    func_env: &'s move_model::model::FunctionEnv<'s>,
+    func_target: &'s move_stackless_bytecode::function_target::FunctionTarget<'s>,
 }
 
 #[derive(Clone, Debug)]
@@ -167,8 +170,14 @@ struct BackwardVisitorConfig {
 }
 
 impl<'s> StacklessVarUsagePipeline<'s> {
-    pub fn new(env: &'s move_model::model::GlobalEnv) -> Self {
-        Self { env }
+    pub fn new(
+        func_env: &'s move_model::model::FunctionEnv<'s>,
+        func_target: &'s move_stackless_bytecode::function_target::FunctionTarget<'s>,
+    ) -> Self {
+        Self {
+            func_env,
+            func_target,
+        }
     }
 
     pub fn run(
@@ -204,9 +213,13 @@ impl<'s> StacklessVarUsagePipeline<'s> {
     ) {
         use move_stackless_bytecode::stackless_bytecode::Bytecode::*;
         match &inst.bytecode {
-            Assign(_, dst, src, _) => {
+            Assign(_, dst, src, kind) => {
                 let svar = state.get_or_default(src);
                 svar.add_read(&unit_config.written_before);
+                let ty = self.func_target.get_local_type(*src);
+                if matches!(kind, AssignKind::Move) && !ty.is_primitive() && !ty.is_reference() {
+                    svar.add_write(&unit_config.read_before);
+                }
                 unit_config.read_before.insert(*src);
                 let dvar = state.get_or_default(dst);
                 dvar.add_write(&unit_config.read_before);
@@ -229,7 +242,7 @@ impl<'s> StacklessVarUsagePipeline<'s> {
                 unit_config.read_before.extend(srcs);
 
                 if let Operation::Function(mid, fid, _types) = op {
-                    let module = self.env.get_module(*mid);
+                    let module = self.func_env.module_env.env.get_module(*mid);
                     let func = module.get_function(*fid);
 
                     for (idx, param) in func.get_parameters().iter().enumerate() {

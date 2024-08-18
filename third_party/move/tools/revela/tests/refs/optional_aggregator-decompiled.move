@@ -64,9 +64,10 @@ module 0x1::optional_aggregator {
             integer    : v1,
         } = arg0;
         let v2 = v0;
+        let v3 = 0x1::aggregator::limit(0x1::option::borrow<0x1::aggregator::Aggregator>(&v2));
         0x1::aggregator::destroy(0x1::option::destroy_some<0x1::aggregator::Aggregator>(v2));
         0x1::option::destroy_none<Integer>(v1);
-        0x1::aggregator::limit(0x1::option::borrow<0x1::aggregator::Aggregator>(&v2))
+        v3
     }
 
     fun destroy_optional_integer(arg0: OptionalAggregator) : u128 {
@@ -75,9 +76,10 @@ module 0x1::optional_aggregator {
             integer    : v1,
         } = arg0;
         let v2 = v1;
+        let v3 = limit(0x1::option::borrow<Integer>(&v2));
         destroy_integer(0x1::option::destroy_some<Integer>(v2));
         0x1::option::destroy_none<0x1::aggregator::Aggregator>(v0);
-        limit(0x1::option::borrow<Integer>(&v2))
+        v3
     }
 
     public fun is_parallelizable(arg0: &OptionalAggregator) : bool {
